@@ -1,10 +1,13 @@
 #include "ReaderActivity.h"
 
 #include <HalStorage.h>
+#include <Logging.h>
 
 #include "CrossPointSettings.h"
 #include "Epub.h"
 #include "EpubReaderActivity.h"
+#include "Markdown.h"
+#include "MdReaderActivity.h"
 #include "Txt.h"
 #include "TxtReaderActivity.h"
 #include "Xtc.h"
@@ -26,8 +29,11 @@ bool ReaderActivity::isXtcFile(const std::string& path) {
 }
 
 bool ReaderActivity::isTxtFile(const std::string& path) {
-  return StringUtils::checkFileExtension(path, ".txt") ||
-         StringUtils::checkFileExtension(path, ".md");  // Treat .md as txt files (until we have a markdown reader)
+  return StringUtils::checkFileExtension(path, ".txt");
+}
+
+bool ReaderActivity::isMdFile(const std::string& path) {
+  return StringUtils::checkFileExtension(path, ".md") || StringUtils::checkFileExtension(path, ".markdown");
 }
 
 bool ReaderActivity::isBmpFile(const std::string& path) { return StringUtils::checkFileExtension(path, ".bmp"); }
@@ -77,6 +83,21 @@ std::unique_ptr<Txt> ReaderActivity::loadTxt(const std::string& path) {
   return nullptr;
 }
 
+std::unique_ptr<Markdown> ReaderActivity::loadMarkdown(const std::string& path) {
+  if (!Storage.exists(path.c_str())) {
+    LOG_ERR("RDR", "File does not exist: %s", path.c_str());
+    return nullptr;
+  }
+
+  auto md = std::unique_ptr<Markdown>(new Markdown(path, "/.crosspoint"));
+  if (md->load()) {
+    return md;
+  }
+
+  LOG_ERR("RDR", "Failed to load Markdown");
+  return nullptr;
+}
+
 void ReaderActivity::goToLibrary(const std::string& fromBookPath) {
   // If coming from a book, start in that book's folder; otherwise start from root
   const auto initialPath = fromBookPath.empty() ? "/" : extractFolderPath(fromBookPath);
@@ -112,6 +133,14 @@ void ReaderActivity::onGoToTxtReader(std::unique_ptr<Txt> txt) {
       renderer, mappedInput, std::move(txt), [this, txtPath] { goToLibrary(txtPath); }, [this] { onGoBack(); }));
 }
 
+void ReaderActivity::onGoToMdReader(std::unique_ptr<Markdown> md) {
+  const auto mdPath = md->getPath();
+  currentBookPath = mdPath;
+  exitActivity();
+  enterNewActivity(new MdReaderActivity(
+      renderer, mappedInput, std::move(md), [this, mdPath] { goToLibrary(mdPath); }, [this] { onGoBack(); }));
+}
+
 void ReaderActivity::onEnter() {
   ActivityWithSubactivity::onEnter();
 
@@ -130,6 +159,13 @@ void ReaderActivity::onEnter() {
       return;
     }
     onGoToXtcReader(std::move(xtc));
+  } else if (isMdFile(initialBookPath)) {
+    auto md = loadMarkdown(initialBookPath);
+    if (!md) {
+      onGoBack();
+      return;
+    }
+    onGoToMdReader(std::move(md));
   } else if (isTxtFile(initialBookPath)) {
     auto txt = loadTxt(initialBookPath);
     if (!txt) {
