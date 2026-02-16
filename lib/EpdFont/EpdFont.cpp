@@ -41,6 +41,7 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
 
     if (!glyph) {
       // TODO: Better handle this?
+      prevCp = 0;
       continue;
     }
 
