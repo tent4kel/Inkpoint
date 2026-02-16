@@ -18,13 +18,12 @@ const EpdFont* EpdFontFamily::getFont(const Style style) const {
   return regular;
 }
 
-void EpdFontFamily::getTextDimensions(const char* string, int* w, int* h, const Style style,
-                                      const bool kerningEnabled) const {
-  getFont(style)->getTextDimensions(string, w, h, kerningEnabled);
+void EpdFontFamily::getTextDimensions(const char* string, int* w, int* h, const Style style) const {
+  getFont(style)->getTextDimensions(string, w, h);
 }
 
-bool EpdFontFamily::hasPrintableChars(const char* string, const Style style, const bool kerningEnabled) const {
-  return getFont(style)->hasPrintableChars(string, kerningEnabled);
+bool EpdFontFamily::hasPrintableChars(const char* string, const Style style) const {
+  return getFont(style)->hasPrintableChars(string);
 }
 
 const EpdFontData* EpdFontFamily::getData(const Style style) const { return getFont(style)->data; }

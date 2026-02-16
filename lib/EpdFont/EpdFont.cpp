@@ -5,7 +5,7 @@
 #include <algorithm>
 
 void EpdFont::getTextBounds(const char* string, const int startX, const int startY, int* minX, int* minY, int* maxX,
-                            int* maxY, const bool kerningEnabled) const {
+                            int* maxY) const {
   *minX = startX;
   *minY = startY;
   *maxX = startX;
@@ -21,7 +21,7 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
   uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&string)))) {
     // Ligature chaining: substitute while pairs match
-    while (kerningEnabled) {
+    while (true) {
       const auto saved = reinterpret_cast<const uint8_t*>(string);
       const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&string));
       if (nextCp == 0) break;
@@ -45,7 +45,7 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
       continue;
     }
 
-    if (kerningEnabled && prevCp != 0) {
+    if (prevCp != 0) {
       cursorX += getKerning(prevCp, cp);
     }
 
@@ -58,19 +58,19 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
   }
 }
 
-void EpdFont::getTextDimensions(const char* string, int* w, int* h, const bool kerningEnabled) const {
+void EpdFont::getTextDimensions(const char* string, int* w, int* h) const {
   int minX = 0, minY = 0, maxX = 0, maxY = 0;
 
-  getTextBounds(string, 0, 0, &minX, &minY, &maxX, &maxY, kerningEnabled);
+  getTextBounds(string, 0, 0, &minX, &minY, &maxX, &maxY);
 
   *w = maxX - minX;
   *h = maxY - minY;
 }
 
-bool EpdFont::hasPrintableChars(const char* string, const bool kerningEnabled) const {
+bool EpdFont::hasPrintableChars(const char* string) const {
   int w = 0, h = 0;
 
-  getTextDimensions(string, &w, &h, kerningEnabled);
+  getTextDimensions(string, &w, &h);
 
   return w > 0 || h > 0;
 }

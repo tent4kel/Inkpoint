@@ -52,14 +52,14 @@ void stripSoftHyphensInPlace(std::string& word) {
 }
 
 // Returns the rendered width for a word while ignoring soft hyphen glyphs and optionally appending a visible hyphen.
-uint16_t measureWordWidth(const GfxRenderer& renderer, const int fontId, const bool kerningEnabled,
-                          const std::string& word, const EpdFontFamily::Style style, const bool appendHyphen = false) {
+uint16_t measureWordWidth(const GfxRenderer& renderer, const int fontId, const std::string& word,
+                          const EpdFontFamily::Style style, const bool appendHyphen = false) {
   if (word.size() == 1 && word[0] == ' ' && !appendHyphen) {
     return renderer.getSpaceWidth(fontId);
   }
   const bool hasSoftHyphen = containsSoftHyphen(word);
   if (!hasSoftHyphen && !appendHyphen) {
-    return renderer.getTextWidth(fontId, word.c_str(), style, kerningEnabled);
+    return renderer.getTextWidth(fontId, word.c_str(), style);
   }
 
   std::string sanitized = word;
@@ -69,7 +69,7 @@ uint16_t measureWordWidth(const GfxRenderer& renderer, const int fontId, const b
   if (appendHyphen) {
     sanitized.push_back('-');
   }
-  return renderer.getTextWidth(fontId, sanitized.c_str(), style, kerningEnabled);
+  return renderer.getTextWidth(fontId, sanitized.c_str(), style);
 }
 
 }  // namespace
@@ -121,7 +121,7 @@ std::vector<uint16_t> ParsedText::calculateWordWidths(const GfxRenderer& rendere
   wordWidths.reserve(words.size());
 
   for (size_t i = 0; i < words.size(); ++i) {
-    wordWidths.push_back(measureWordWidth(renderer, fontId, kerningEnabled, words[i], wordStyles[i]));
+    wordWidths.push_back(measureWordWidth(renderer, fontId, words[i], wordStyles[i]));
   }
 
   return wordWidths;
@@ -175,10 +175,8 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
       int gap = 0;
       if (j > static_cast<size_t>(i) && !continuesVec[j]) {
         gap = spaceWidth;
-        if (kerningEnabled) {
-          gap += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]));
-        }
-      } else if (j > static_cast<size_t>(i) && continuesVec[j] && kerningEnabled) {
+        gap += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]));
+      } else if (j > static_cast<size_t>(i) && continuesVec[j]) {
         // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
         gap = renderer.getKerning(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]));
       }
@@ -290,11 +288,9 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
       int spacing = 0;
       if (!isFirstWord && !continuesVec[currentIndex]) {
         spacing = spaceWidth;
-        if (kerningEnabled) {
-          spacing += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[currentIndex - 1]),
-                                                 firstCodepoint(words[currentIndex]));
-        }
-      } else if (!isFirstWord && continuesVec[currentIndex] && kerningEnabled) {
+        spacing += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[currentIndex - 1]),
+                                               firstCodepoint(words[currentIndex]));
+      } else if (!isFirstWord && continuesVec[currentIndex]) {
         // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
         spacing =
             renderer.getKerning(fontId, lastCodepoint(words[currentIndex - 1]), firstCodepoint(words[currentIndex]));
@@ -372,8 +368,7 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
     }
 
     const bool needsHyphen = info.requiresInsertedHyphen;
-    const int prefixWidth =
-        measureWordWidth(renderer, fontId, kerningEnabled, word.substr(0, offset), style, needsHyphen);
+    const int prefixWidth = measureWordWidth(renderer, fontId, word.substr(0, offset), style, needsHyphen);
     if (prefixWidth > availableWidth || prefixWidth <= chosenWidth) {
       continue;  // Skip if too wide or not an improvement
     }
@@ -407,7 +402,7 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
 
   // Update cached widths to reflect the new prefix/remainder pairing.
   wordWidths[wordIndex] = static_cast<uint16_t>(chosenWidth);
-  const uint16_t remainderWidth = measureWordWidth(renderer, fontId, kerningEnabled, remainder, style);
+  const uint16_t remainderWidth = measureWordWidth(renderer, fontId, remainder, style);
   wordWidths.insert(wordWidths.begin() + wordIndex + 1, remainderWidth);
   return true;
 }
@@ -441,12 +436,10 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     if (wordIdx > 0 && !continuesVec[lastBreakAt + wordIdx]) {
       actualGapCount++;
       int naturalGap = spaceWidth;
-      if (kerningEnabled) {
-        naturalGap += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[lastBreakAt + wordIdx - 1]),
-                                                  firstCodepoint(words[lastBreakAt + wordIdx]));
-      }
+      naturalGap += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[lastBreakAt + wordIdx - 1]),
+                                                firstCodepoint(words[lastBreakAt + wordIdx]));
       totalNaturalGaps += naturalGap;
-    } else if (wordIdx > 0 && continuesVec[lastBreakAt + wordIdx] && kerningEnabled) {
+    } else if (wordIdx > 0 && continuesVec[lastBreakAt + wordIdx]) {
       // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
       totalNaturalGaps += renderer.getKerning(fontId, lastCodepoint(words[lastBreakAt + wordIdx - 1]),
                                               firstCodepoint(words[lastBreakAt + wordIdx]));
@@ -482,15 +475,13 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     const bool nextIsContinuation = wordIdx + 1 < lineWordCount && continuesVec[lastBreakAt + wordIdx + 1];
     if (nextIsContinuation) {
       int advance = wordWidths[lastBreakAt + wordIdx];
-      if (kerningEnabled) {
-        // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
-        advance += renderer.getKerning(fontId, lastCodepoint(words[lastBreakAt + wordIdx]),
-                                       firstCodepoint(words[lastBreakAt + wordIdx + 1]));
-      }
+      // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
+      advance += renderer.getKerning(fontId, lastCodepoint(words[lastBreakAt + wordIdx]),
+                                     firstCodepoint(words[lastBreakAt + wordIdx + 1]));
       xpos += advance;
     } else {
       int gap = spaceWidth;
-      if (kerningEnabled && wordIdx + 1 < lineWordCount) {
+      if (wordIdx + 1 < lineWordCount) {
         gap += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[lastBreakAt + wordIdx]),
                                            firstCodepoint(words[lastBreakAt + wordIdx + 1]));
       }

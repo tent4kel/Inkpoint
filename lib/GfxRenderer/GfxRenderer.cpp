@@ -73,26 +73,25 @@ void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
   }
 }
 
-int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontFamily::Style style,
-                              const bool kerningEnabled) const {
+int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontFamily::Style style) const {
   if (fontMap.count(fontId) == 0) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
 
   int w = 0, h = 0;
-  fontMap.at(fontId).getTextDimensions(text, &w, &h, style, kerningEnabled);
+  fontMap.at(fontId).getTextDimensions(text, &w, &h, style);
   return w;
 }
 
 void GfxRenderer::drawCenteredText(const int fontId, const int y, const char* text, const bool black,
-                                   const EpdFontFamily::Style style, const bool kerningEnabled) const {
-  const int x = (getScreenWidth() - getTextWidth(fontId, text, style, kerningEnabled)) / 2;
-  drawText(fontId, x, y, text, black, style, kerningEnabled);
+                                   const EpdFontFamily::Style style) const {
+  const int x = (getScreenWidth() - getTextWidth(fontId, text, style)) / 2;
+  drawText(fontId, x, y, text, black, style);
 }
 
 void GfxRenderer::drawText(const int fontId, const int x, const int y, const char* text, const bool black,
-                           const EpdFontFamily::Style style, const bool kerningEnabled) const {
+                           const EpdFontFamily::Style style) const {
   const int yPos = y + getFontAscenderSize(fontId);
   int xpos = x;
 
@@ -108,7 +107,7 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
   const auto font = fontMap.at(fontId);
 
   // no printable characters
-  if (!font.hasPrintableChars(text, style, kerningEnabled)) {
+  if (!font.hasPrintableChars(text, style)) {
     return;
   }
 
@@ -116,7 +115,7 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
   uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
     // Ligature chaining: substitute while pairs match
-    while (kerningEnabled) {
+    while (true) {
       const auto saved = reinterpret_cast<const uint8_t*>(text);
       const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text));
       if (nextCp == 0) break;
@@ -127,7 +126,7 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
       }
       cp = lig;
     }
-    renderChar(font, cp, &xpos, &yPos, black, style, prevCp, kerningEnabled);
+    renderChar(font, cp, &xpos, &yPos, black, style, prevCp);
     prevCp = cp;
   }
 }
@@ -676,18 +675,18 @@ void GfxRenderer::displayBuffer(const HalDisplay::RefreshMode refreshMode) const
 }
 
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
-                                       const EpdFontFamily::Style style, const bool kerningEnabled) const {
+                                       const EpdFontFamily::Style style) const {
   if (!text || maxWidth <= 0) return "";
 
   std::string item = text;
   const char* ellipsis = "...";
-  int textWidth = getTextWidth(fontId, item.c_str(), style, kerningEnabled);
+  int textWidth = getTextWidth(fontId, item.c_str(), style);
   if (textWidth <= maxWidth) {
     // Text fits, return as is
     return item;
   }
 
-  while (!item.empty() && getTextWidth(fontId, (item + ellipsis).c_str(), style, kerningEnabled) >= maxWidth) {
+  while (!item.empty() && getTextWidth(fontId, (item + ellipsis).c_str(), style) >= maxWidth) {
     utf8RemoveLastChar(item);
   }
 
@@ -743,7 +742,7 @@ int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint3
   return fontMap.at(fontId).getKerning(leftCp, rightCp);
 }
 
-int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, const bool kerningEnabled) const {
+int GfxRenderer::getTextAdvanceX(const int fontId, const char* text) const {
   if (fontMap.count(fontId) == 0) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
@@ -755,7 +754,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, const bool 
   const EpdFontFamily& family = fontMap.at(fontId);
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
     // Ligature chaining: substitute while pairs match
-    while (kerningEnabled) {
+    while (true) {
       const auto saved = reinterpret_cast<const uint8_t*>(text);
       const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text));
       if (nextCp == 0) break;
@@ -766,7 +765,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, const bool 
       }
       cp = lig;
     }
-    if (kerningEnabled && prevCp != 0) {
+    if (prevCp != 0) {
       width += family.getKerning(prevCp, cp);
     }
     width += family.getGlyph(cp, EpdFontFamily::REGULAR)->advanceX;
@@ -802,7 +801,7 @@ int GfxRenderer::getTextHeight(const int fontId) const {
 }
 
 void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y, const char* text, const bool black,
-                                      const EpdFontFamily::Style style, const bool kerningEnabled) const {
+                                      const EpdFontFamily::Style style) const {
   // Cannot draw a NULL / empty string
   if (text == nullptr || *text == '\0') {
     return;
@@ -815,7 +814,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
   const auto font = fontMap.at(fontId);
 
   // No printable characters
-  if (!font.hasPrintableChars(text, style, kerningEnabled)) {
+  if (!font.hasPrintableChars(text, style)) {
     return;
   }
 
@@ -829,7 +828,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
   uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
     // Ligature chaining: substitute while pairs match
-    while (kerningEnabled) {
+    while (true) {
       const auto saved = reinterpret_cast<const uint8_t*>(text);
       const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text));
       if (nextCp == 0) break;
@@ -850,7 +849,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
     }
 
     // Apply kerning adjustment before rendering
-    if (kerningEnabled && prevCp != 0) {
+    if (prevCp != 0) {
       yPos -= font.getKerning(prevCp, cp, style);
     }
 
@@ -1008,8 +1007,7 @@ void GfxRenderer::cleanupGrayscaleWithFrameBuffer() const {
 }
 
 void GfxRenderer::renderChar(const EpdFontFamily& fontFamily, const uint32_t cp, int* x, const int* y,
-                             const bool pixelState, const EpdFontFamily::Style style, const uint32_t prevCp,
-                             const bool kerningEnabled) const {
+                             const bool pixelState, const EpdFontFamily::Style style, const uint32_t prevCp) const {
   const EpdGlyph* glyph = fontFamily.getGlyph(cp, style);
   if (!glyph) {
     glyph = fontFamily.getGlyph(REPLACEMENT_GLYPH, style);
@@ -1022,7 +1020,7 @@ void GfxRenderer::renderChar(const EpdFontFamily& fontFamily, const uint32_t cp,
   }
 
   // Apply kerning adjustment before rendering
-  if (kerningEnabled && prevCp != 0) {
+  if (prevCp != 0) {
     *x += fontFamily.getKerning(prevCp, cp, style);
   }
 

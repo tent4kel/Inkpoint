@@ -37,7 +37,7 @@ class GfxRenderer {
   uint8_t* bwBufferChunks[BW_BUFFER_NUM_CHUNKS] = {nullptr};
   std::map<int, EpdFontFamily> fontMap;
   void renderChar(const EpdFontFamily& fontFamily, uint32_t cp, int* x, const int* y, bool pixelState,
-                  EpdFontFamily::Style style, uint32_t prevCp, bool kerningEnabled) const;
+                  EpdFontFamily::Style style, uint32_t prevCp) const;
   void freeBwBufferChunks();
   template <Color color>
   void drawPixelDither(int x, int y) const;
@@ -98,27 +98,26 @@ class GfxRenderer {
   void fillPolygon(const int* xPoints, const int* yPoints, int numPoints, bool state = true) const;
 
   // Text
-  int getTextWidth(int fontId, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR,
-                   bool kerningEnabled = true) const;
+  int getTextWidth(int fontId, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   void drawCenteredText(int fontId, int y, const char* text, bool black = true,
-                        EpdFontFamily::Style style = EpdFontFamily::REGULAR, bool kerningEnabled = true) const;
+                        EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   void drawText(int fontId, int x, int y, const char* text, bool black = true,
-                EpdFontFamily::Style style = EpdFontFamily::REGULAR, bool kerningEnabled = true) const;
+                EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   int getSpaceWidth(int fontId) const;
   /// Returns the kerning adjustment for a space between two codepoints:
   /// kern(leftCp, ' ') + kern(' ', rightCp). Returns 0 if kerning is unavailable.
   int getSpaceKernAdjust(int fontId, uint32_t leftCp, uint32_t rightCp) const;
   /// Returns the kerning adjustment between two adjacent codepoints.
   int getKerning(int fontId, uint32_t leftCp, uint32_t rightCp) const;
-  int getTextAdvanceX(int fontId, const char* text, bool kerningEnabled) const;
+  int getTextAdvanceX(int fontId, const char* text) const;
   int getFontAscenderSize(int fontId) const;
   int getLineHeight(int fontId) const;
   std::string truncatedText(int fontId, const char* text, int maxWidth,
-                            EpdFontFamily::Style style = EpdFontFamily::REGULAR, bool kerningEnabled = true) const;
+                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
 
   // Helper for drawing rotated text (90 degrees clockwise, for side buttons)
   void drawTextRotated90CW(int fontId, int x, int y, const char* text, bool black = true,
-                           EpdFontFamily::Style style = EpdFontFamily::REGULAR, bool kerningEnabled = true) const;
+                           EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   int getTextHeight(int fontId) const;
 
   // Grayscale functions
