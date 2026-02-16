@@ -23,13 +23,17 @@
 #include "activities/home/HomeActivity.h"
 #include "activities/home/MyLibraryActivity.h"
 #include "activities/home/RecentBooksActivity.h"
+#include "activities/anki/AnkiActivity.h"
+#include "activities/anki/AnkiDeckExplorerActivity.h"
 #include "activities/network/CrossPointWebServerActivity.h"
 #include "activities/reader/ReaderActivity.h"
 #include "activities/settings/SettingsActivity.h"
 #include "activities/util/FullScreenMessageActivity.h"
+#include "anki/AnkiSessionManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
+#include "util/StringUtils.h"
 
 HalDisplay display;
 HalGPIO gpio;
@@ -212,7 +216,34 @@ void enterDeepSleep() {
 void onGoHome();
 void onGoToMyLibraryWithPath(const std::string& path);
 void onGoToRecentBooks();
+void onGoToAnki(const std::string& csvPath) {
+  std::string parentDir = "/";
+  auto lastSlash = csvPath.rfind('/');
+  if (lastSlash != std::string::npos && lastSlash > 0) {
+    parentDir = csvPath.substr(0, lastSlash);
+  }
+  exitActivity();
+  enterNewActivity(new AnkiActivity(renderer, mappedInputManager, csvPath, [parentDir]() {
+    onGoToMyLibraryWithPath(parentDir);
+  }));
+}
+
+void onGoToAnkiExplorer();
+void onGoToAnkiFromExplorer(const std::string& csvPath) {
+  exitActivity();
+  enterNewActivity(new AnkiActivity(renderer, mappedInputManager, csvPath, onGoToAnkiExplorer));
+}
+
+void onGoToAnkiExplorer() {
+  exitActivity();
+  enterNewActivity(new AnkiDeckExplorerActivity(renderer, mappedInputManager, onGoHome, onGoToAnkiFromExplorer));
+}
+
 void onGoToReader(const std::string& initialEpubPath) {
+  if (StringUtils::checkFileExtension(initialEpubPath, ".csv")) {
+    onGoToAnki(initialEpubPath);
+    return;
+  }
   exitActivity();
   enterNewActivity(
       new ReaderActivity(renderer, mappedInputManager, initialEpubPath, onGoHome, onGoToMyLibraryWithPath));
@@ -251,7 +282,7 @@ void onGoToBrowser() {
 void onGoHome() {
   exitActivity();
   enterNewActivity(new HomeActivity(renderer, mappedInputManager, onGoToReader, onGoToMyLibrary, onGoToRecentBooks,
-                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser));
+                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser, onGoToAnkiExplorer));
 }
 
 void setupDisplayAndFonts() {
@@ -307,6 +338,7 @@ void setup() {
   SETTINGS.loadFromFile();
   I18N.loadSettings();
   KOREADER_STORE.loadFromFile();
+  ANKI_SESSION.load();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
