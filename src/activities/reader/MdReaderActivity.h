@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
-#include "activities/ActivityWithSubactivity.h"
+#include "activities/Activity.h"
 
 class Page;
 
@@ -20,7 +20,7 @@ class Page;
  * input handling, status bar) but renders using cached Pages built by
  * MarkdownParser instead of plain text lines. Single "section" (the whole file).
  */
-class MdReaderActivity final : public ActivityWithSubactivity {
+class MdReaderActivity final : public Activity {
   std::unique_ptr<Markdown> md;
   TaskHandle_t displayTaskHandle = nullptr;
   SemaphoreHandle_t renderingMutex = nullptr;
@@ -29,8 +29,7 @@ class MdReaderActivity final : public ActivityWithSubactivity {
   int pagesUntilFullRefresh = 0;
   bool updateRequired = false;
   bool initialized = false;
-  const std::function<void()> onGoBack;
-  const std::function<void()> onGoHome;
+  std::string mdFolderPath;  // folder path for "go to library" navigation
 
   // Cache file for rendered pages (section.bin style)
   std::string sectionFilePath;
@@ -58,12 +57,8 @@ class MdReaderActivity final : public ActivityWithSubactivity {
   void loadProgress();
 
  public:
-  explicit MdReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Markdown> md,
-                            const std::function<void()>& onGoBack, const std::function<void()>& onGoHome)
-      : ActivityWithSubactivity("MdReader", renderer, mappedInput),
-        md(std::move(md)),
-        onGoBack(onGoBack),
-        onGoHome(onGoHome) {}
+  explicit MdReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Markdown> md)
+      : Activity("MdReader", renderer, mappedInput), md(std::move(md)) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

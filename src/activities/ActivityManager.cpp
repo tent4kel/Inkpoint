@@ -2,6 +2,8 @@
 
 #include <HalPowerManager.h>
 
+#include "anki/AnkiActivity.h"
+#include "anki/AnkiDeckExplorerActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -12,6 +14,7 @@
 #include "reader/ReaderActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/FullScreenMessageActivity.h"
+#include <FsHelpers.h>
 
 void ActivityManager::begin() {
   xTaskCreate(&renderTaskTrampoline, "ActivityManagerRender",
@@ -182,7 +185,25 @@ void ActivityManager::goToBrowser() {
 }
 
 void ActivityManager::goToReader(std::string path) {
+  if (FsHelpers::checkFileExtension(path, ".csv")) {
+    goToAnki(std::move(path));
+    return;
+  }
   replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path)));
+}
+
+void ActivityManager::goToAnkiExplorer() {
+  replaceActivity(std::make_unique<AnkiDeckExplorerActivity>(
+      renderer, mappedInput, [this]() { goHome(); },
+      [this](const std::string& csvPath) {
+        pushActivity(std::make_unique<AnkiActivity>(renderer, mappedInput, csvPath,
+                                                    [this]() { popActivity(); }));
+      }));
+}
+
+void ActivityManager::goToAnki(std::string csvPath) {
+  replaceActivity(std::make_unique<AnkiActivity>(renderer, mappedInput, std::move(csvPath),
+                                                  [this]() { goHome(); }));
 }
 
 void ActivityManager::goToSleep() {
