@@ -114,18 +114,7 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
   uint32_t cp;
   uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
-    // Ligature chaining: substitute while pairs match
-    while (true) {
-      const auto saved = reinterpret_cast<const uint8_t*>(text);
-      const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text));
-      if (nextCp == 0) break;
-      const uint32_t lig = font.getLigature(cp, nextCp, style);
-      if (lig == 0) {
-        text = reinterpret_cast<const char*>(saved);
-        break;
-      }
-      cp = lig;
-    }
+    cp = font.applyLigatures(cp, text, style);
     renderChar(font, cp, &xpos, &yPos, black, style, prevCp);
     prevCp = cp;
   }
@@ -742,7 +731,7 @@ int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint3
   return fontMap.at(fontId).getKerning(leftCp, rightCp);
 }
 
-int GfxRenderer::getTextAdvanceX(const int fontId, const char* text) const {
+int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFamily::Style style) const {
   if (fontMap.count(fontId) == 0) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
@@ -753,22 +742,11 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text) const {
   int width = 0;
   const EpdFontFamily& family = fontMap.at(fontId);
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
-    // Ligature chaining: substitute while pairs match
-    while (true) {
-      const auto saved = reinterpret_cast<const uint8_t*>(text);
-      const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text));
-      if (nextCp == 0) break;
-      const uint32_t lig = family.getLigature(cp, nextCp);
-      if (lig == 0) {
-        text = reinterpret_cast<const char*>(saved);
-        break;
-      }
-      cp = lig;
-    }
+    cp = family.applyLigatures(cp, text, style);
     if (prevCp != 0) {
-      width += family.getKerning(prevCp, cp);
+      width += family.getKerning(prevCp, cp, style);
     }
-    width += family.getGlyph(cp, EpdFontFamily::REGULAR)->advanceX;
+    width += family.getGlyph(cp, style)->advanceX;
     prevCp = cp;
   }
   return width;
@@ -827,18 +805,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
   uint32_t cp;
   uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
-    // Ligature chaining: substitute while pairs match
-    while (true) {
-      const auto saved = reinterpret_cast<const uint8_t*>(text);
-      const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text));
-      if (nextCp == 0) break;
-      const uint32_t lig = font.getLigature(cp, nextCp, style);
-      if (lig == 0) {
-        text = reinterpret_cast<const char*>(saved);
-        break;
-      }
-      cp = lig;
-    }
+    cp = font.applyLigatures(cp, text, style);
 
     const EpdGlyph* glyph = font.getGlyph(cp, style);
     if (!glyph) {

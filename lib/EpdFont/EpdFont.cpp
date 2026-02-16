@@ -20,18 +20,7 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
   uint32_t cp;
   uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&string)))) {
-    // Ligature chaining: substitute while pairs match
-    while (true) {
-      const auto saved = reinterpret_cast<const uint8_t*>(string);
-      const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&string));
-      if (nextCp == 0) break;
-      const uint32_t lig = getLigature(cp, nextCp);
-      if (lig == 0) {
-        string = reinterpret_cast<const char*>(saved);
-        break;
-      }
-      cp = lig;
-    }
+    cp = applyLigatures(cp, string);
 
     const EpdGlyph* glyph = getGlyph(cp);
 
@@ -115,6 +104,21 @@ uint32_t EpdFont::getLigature(const uint32_t leftCp, const uint32_t rightCp) con
     return found->ligatureCp;
   }
   return 0;
+}
+
+uint32_t EpdFont::applyLigatures(uint32_t cp, const char*& text) const {
+  while (true) {
+    const auto saved = reinterpret_cast<const uint8_t*>(text);
+    const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text));
+    if (nextCp == 0) break;
+    const uint32_t lig = getLigature(cp, nextCp);
+    if (lig == 0) {
+      text = reinterpret_cast<const char*>(saved);
+      break;
+    }
+    cp = lig;
+  }
+  return cp;
 }
 
 const EpdGlyph* EpdFont::getGlyph(const uint32_t cp) const {

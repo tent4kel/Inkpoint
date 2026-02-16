@@ -19,4 +19,9 @@ class EpdFont {
 
   /// Returns the ligature codepoint for a pair, or 0 if no ligature exists.
   uint32_t getLigature(uint32_t leftCp, uint32_t rightCp) const;
+
+  /// Greedily applies ligature substitutions starting from cp, consuming
+  /// as many following codepoints from text as possible. Returns the
+  /// (possibly substituted) codepoint; advances text past consumed chars.
+  uint32_t applyLigatures(uint32_t cp, const char*& text) const;
 };
