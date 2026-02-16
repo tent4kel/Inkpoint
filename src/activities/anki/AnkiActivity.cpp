@@ -42,13 +42,6 @@ int AnkiActivity::getFontIdForAnkiSize() const {
         case 2: return NOTOSANS_16_FONT_ID;
         case 3: return NOTOSANS_18_FONT_ID;
       }
-    case CrossPointSettings::OPENDYSLEXIC:
-      switch (ankiFontSize) {
-        case 0: return OPENDYSLEXIC_8_FONT_ID;
-        case 1: default: return OPENDYSLEXIC_10_FONT_ID;
-        case 2: return OPENDYSLEXIC_12_FONT_ID;
-        case 3: return OPENDYSLEXIC_14_FONT_ID;
-      }
   }
 }
 
