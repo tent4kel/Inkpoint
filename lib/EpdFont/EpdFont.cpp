@@ -78,6 +78,9 @@ int8_t EpdFont::getKerning(const uint32_t leftCp, const uint32_t rightCp) const 
   if (!data->kernPairs || data->kernPairCount == 0) {
     return 0;
   }
+  if (leftCp > 0xFFFF || rightCp > 0xFFFF) {
+    return 0;
+  }
 
   const uint32_t key = (leftCp << 16) | (rightCp & 0xFFFF);
   const EpdKernPair* pairs = data->kernPairs;
@@ -101,6 +104,9 @@ int8_t EpdFont::getKerning(const uint32_t leftCp, const uint32_t rightCp) const 
 
 uint32_t EpdFont::getLigature(const uint32_t leftCp, const uint32_t rightCp) const {
   if (!data->ligaturePairs || data->ligaturePairCount == 0) {
+    return 0;
+  }
+  if (leftCp > 0xFFFF || rightCp > 0xFFFF) {
     return 0;
   }
 
