@@ -107,6 +107,9 @@ uint32_t EpdFont::getLigature(const uint32_t leftCp, const uint32_t rightCp) con
 }
 
 uint32_t EpdFont::applyLigatures(uint32_t cp, const char*& text) const {
+  if (!data->ligaturePairs || data->ligaturePairCount == 0) {
+    return cp;
+  }
   while (true) {
     const auto saved = reinterpret_cast<const uint8_t*>(text);
     const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text));
