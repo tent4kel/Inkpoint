@@ -16,12 +16,14 @@
 #include "Battery.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "InstapaperCredentialStore.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "activities/boot_sleep/BootActivity.h"
 #include "activities/boot_sleep/SleepActivity.h"
 #include "activities/browser/OpdsBookBrowserActivity.h"
+#include "activities/instapaper/InstapaperActivity.h"
 #include "activities/home/HomeActivity.h"
 #include "activities/home/MyLibraryActivity.h"
 #include "activities/home/RecentBooksActivity.h"
@@ -251,10 +253,22 @@ void onGoToBrowser() {
   enterNewActivity(new OpdsBookBrowserActivity(renderer, mappedInputManager, onGoHome));
 }
 
+void onGoToInstapaper();
+void onGoToReaderFromInstapaper(const std::string& initialEpubPath) {
+  exitActivity();
+  enterNewActivity(
+      new ReaderActivity(renderer, mappedInputManager, initialEpubPath, onGoToInstapaper, onGoToMyLibraryWithPath));
+}
+
+void onGoToInstapaper() {
+  exitActivity();
+  enterNewActivity(new InstapaperActivity(renderer, mappedInputManager, onGoHome, onGoToReaderFromInstapaper));
+}
+
 void onGoHome() {
   exitActivity();
   enterNewActivity(new HomeActivity(renderer, mappedInputManager, onGoToReader, onGoToMyLibrary, onGoToRecentBooks,
-                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser));
+                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser, onGoToInstapaper));
 }
 
 void setupDisplayAndFonts() {
@@ -317,6 +331,7 @@ void setup() {
   SETTINGS.loadFromFile();
   I18N.loadSettings();
   KOREADER_STORE.loadFromFile();
+  INSTAPAPER_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
