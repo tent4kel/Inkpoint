@@ -28,6 +28,9 @@ int HomeActivity::getMenuItemCount() const {
   if (hasOpdsUrl) {
     count++;
   }
+  if (onAnkiExplorerOpen) {
+    count++;
+  }
   return count;
 }
 
@@ -193,6 +196,7 @@ void HomeActivity::loop() {
     const int myLibraryIdx = idx++;
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
+    const int ankiExplorerIdx = onAnkiExplorerOpen ? idx++ : -1;
     const int fileTransferIdx = idx++;
     const int settingsIdx = idx;
 
@@ -204,6 +208,8 @@ void HomeActivity::loop() {
       onRecentsOpen();
     } else if (menuSelectedIndex == opdsLibraryIdx) {
       onOpdsBrowserOpen();
+    } else if (menuSelectedIndex == ankiExplorerIdx) {
+      if (onAnkiExplorerOpen) onAnkiExplorerOpen();
     } else if (menuSelectedIndex == fileTransferIdx) {
       onFileTransferOpen();
     } else if (menuSelectedIndex == settingsIdx) {
@@ -227,14 +233,20 @@ void HomeActivity::render(Activity::RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   // Build menu items dynamically
+  int insertPos = 2;
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
                                         tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings};
 
   if (hasOpdsUrl) {
-    // Insert OPDS Browser after My Library
-    menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 2, Library);
+    menuItems.insert(menuItems.begin() + insertPos, tr(STR_OPDS_BROWSER));
+    menuIcons.insert(menuIcons.begin() + insertPos, Library);
+    insertPos++;
+  }
+  if (onAnkiExplorerOpen) {
+    menuItems.insert(menuItems.begin() + insertPos, "Flashcards");
+    menuIcons.insert(menuIcons.begin() + insertPos, Book);
+    insertPos++;
   }
 
   GUI.drawButtonMenu(
