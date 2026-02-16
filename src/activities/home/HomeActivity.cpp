@@ -14,6 +14,7 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "InstapaperCredentialStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
@@ -25,6 +26,9 @@ int HomeActivity::getMenuItemCount() const {
     count += recentBooks.size();
   }
   if (hasOpdsUrl) {
+    count++;
+  }
+  if (hasInstapaper) {
     count++;
   }
   return count;
@@ -112,6 +116,7 @@ void HomeActivity::onEnter() {
 
   // Check if OPDS browser URL is configured
   hasOpdsUrl = strlen(SETTINGS.opdsServerUrl) > 0;
+  hasInstapaper = INSTAPAPER_STORE.hasCredentials() || INSTAPAPER_STORE.hasLoginCredentials();
 
   selectorIndex = 0;
 
@@ -191,6 +196,7 @@ void HomeActivity::loop() {
     const int fileBrowserIdx = idx++;
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
+    const int instapaperIdx = hasInstapaper ? idx++ : -1;
     const int fileTransferIdx = idx++;
     const int settingsIdx = idx;
 
@@ -202,6 +208,8 @@ void HomeActivity::loop() {
       onRecentsOpen();
     } else if (menuSelectedIndex == opdsLibraryIdx) {
       onOpdsBrowserOpen();
+    } else if (menuSelectedIndex == instapaperIdx) {
+      onInstapaperOpen();
     } else if (menuSelectedIndex == fileTransferIdx) {
       onFileTransferOpen();
     } else if (menuSelectedIndex == settingsIdx) {
@@ -229,10 +237,16 @@ void HomeActivity::render(RenderLock&&) {
                                         tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings};
 
+  int insertPos = 2;
   if (hasOpdsUrl) {
-    // Insert OPDS Browser after File Browser
-    menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 2, Library);
+    menuItems.insert(menuItems.begin() + insertPos, tr(STR_OPDS_BROWSER));
+    menuIcons.insert(menuIcons.begin() + insertPos, Library);
+    insertPos++;
+  }
+  if (hasInstapaper) {
+    menuItems.insert(menuItems.begin() + insertPos, tr(STR_INSTAPAPER));
+    menuIcons.insert(menuIcons.begin() + insertPos, Text);
+    insertPos++;
   }
 
   GUI.drawButtonMenu(
@@ -269,3 +283,5 @@ void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
 
 void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
+
+void HomeActivity::onInstapaperOpen() { activityManager.goToInstapaper(); }

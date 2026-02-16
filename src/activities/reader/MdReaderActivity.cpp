@@ -174,7 +174,7 @@ void MdReaderActivity::initializeReader() {
   orientedMarginBottom += cachedScreenMargin;
 
   orientedMarginBottom +=
-      std::max(cachedScreenMargin, static_cast<uint8_t>(UITheme::getStatusBarHeight()));
+      std::max(cachedScreenMargin, static_cast<int>(UITheme::getStatusBarHeight()));
 
   const uint16_t viewportWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
   const uint16_t viewportHeight = renderer.getScreenHeight() - orientedMarginTop - orientedMarginBottom;
@@ -369,7 +369,7 @@ void MdReaderActivity::renderScreen() {
   orientedMarginBottom += cachedScreenMargin;
 
   orientedMarginBottom +=
-      std::max(cachedScreenMargin, static_cast<uint8_t>(UITheme::getStatusBarHeight()));
+      std::max(cachedScreenMargin, static_cast<int>(UITheme::getStatusBarHeight()));
 
   auto page = loadPageFromCache(currentPage);
   if (!page) {

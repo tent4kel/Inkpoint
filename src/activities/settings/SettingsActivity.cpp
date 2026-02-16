@@ -13,6 +13,7 @@
 #include "OtaUpdateActivity.h"
 #include "SettingsList.h"
 #include "StatusBarSettingsActivity.h"
+#include "activities/instapaper/InstapaperSettingsActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -49,6 +50,7 @@ void SettingsActivity::onEnter() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_BROWSER, SettingAction::OPDSBrowser));
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_INSTAPAPER, SettingAction::Instapaper));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language));
@@ -174,6 +176,9 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::OPDSBrowser:
         startActivityForResult(std::make_unique<CalibreSettingsActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::Instapaper:
+        startActivityForResult(std::make_unique<InstapaperSettingsActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::Network:
         startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);

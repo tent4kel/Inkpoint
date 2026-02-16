@@ -5,6 +5,7 @@
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
+#include "instapaper/InstapaperActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "home/RecentBooksActivity.h"
@@ -179,6 +180,10 @@ void ActivityManager::goToRecentBooks() {
 
 void ActivityManager::goToBrowser() {
   replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput));
+}
+
+void ActivityManager::goToInstapaper() {
+  replaceActivity(std::make_unique<InstapaperActivity>(renderer, mappedInput));
 }
 
 void ActivityManager::goToReader(std::string path) {

@@ -16,6 +16,7 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "InstapaperCredentialStore.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
@@ -257,6 +258,7 @@ void setup() {
   SETTINGS.loadFromFile();
   I18N.loadSettings();
   KOREADER_STORE.loadFromFile();
+  INSTAPAPER_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 

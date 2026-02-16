@@ -103,13 +103,13 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent) {
 
 bool HttpDownloader::postUrl(const std::string& url, const std::string& body, const std::string& authHeader,
                              std::string& outContent) {
-  std::unique_ptr<WiFiClient> client;
+  std::unique_ptr<NetworkClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
-    auto* secureClient = new WiFiClientSecure();
+    auto* secureClient = new NetworkClientSecure();
     secureClient->setInsecure();
     client.reset(secureClient);
   } else {
-    client.reset(new WiFiClient());
+    client.reset(new NetworkClient());
   }
   HTTPClient http;
 
