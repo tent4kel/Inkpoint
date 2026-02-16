@@ -14,6 +14,7 @@
 #include "Battery.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "InstapaperCredentialStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
@@ -26,6 +27,9 @@ int HomeActivity::getMenuItemCount() const {
     count += recentBooks.size();
   }
   if (hasOpdsUrl) {
+    count++;
+  }
+  if (hasInstapaper) {
     count++;
   }
   return count;
@@ -114,6 +118,7 @@ void HomeActivity::onEnter() {
 
   // Check if OPDS browser URL is configured
   hasOpdsUrl = strlen(SETTINGS.opdsServerUrl) > 0;
+  hasInstapaper = INSTAPAPER_STORE.hasCredentials() || INSTAPAPER_STORE.hasLoginCredentials();
 
   selectorIndex = 0;
 
@@ -193,6 +198,7 @@ void HomeActivity::loop() {
     const int myLibraryIdx = idx++;
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
+    const int instapaperIdx = hasInstapaper ? idx++ : -1;
     const int fileTransferIdx = idx++;
     const int settingsIdx = idx;
 
@@ -204,6 +210,8 @@ void HomeActivity::loop() {
       onRecentsOpen();
     } else if (menuSelectedIndex == opdsLibraryIdx) {
       onOpdsBrowserOpen();
+    } else if (menuSelectedIndex == instapaperIdx) {
+      if (onInstapaperOpen) onInstapaperOpen();
     } else if (menuSelectedIndex == fileTransferIdx) {
       onFileTransferOpen();
     } else if (menuSelectedIndex == settingsIdx) {
@@ -229,9 +237,13 @@ void HomeActivity::render(Activity::RenderLock&&) {
   // Build menu items dynamically
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
                                         tr(STR_SETTINGS_TITLE)};
+  int insertPos = 2;
   if (hasOpdsUrl) {
-    // Insert OPDS Browser after My Library
-    menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
+    menuItems.insert(menuItems.begin() + insertPos, tr(STR_OPDS_BROWSER));
+    insertPos++;
+  }
+  if (hasInstapaper) {
+    menuItems.insert(menuItems.begin() + insertPos, "Instapaper");
   }
 
   GUI.drawButtonMenu(
