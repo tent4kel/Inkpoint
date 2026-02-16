@@ -33,7 +33,7 @@ void MdReaderActivity::taskTrampoline(void* param) {
 }
 
 void MdReaderActivity::onEnter() {
-  ActivityWithSubactivity::onEnter();
+  Activity::onEnter();
 
   if (!md) {
     return;
@@ -62,6 +62,11 @@ void MdReaderActivity::onEnter() {
   md->setupCacheDir();
   sectionFilePath = md->getCachePath() + "/section.bin";
 
+  // Store folder path for "go to library" navigation
+  const auto& filePath2 = md->getPath();
+  const auto lastSlash = filePath2.rfind('/');
+  mdFolderPath = (lastSlash != std::string::npos && lastSlash > 0) ? filePath2.substr(0, lastSlash) : "/";
+
   // Save current file as last opened and add to recent books
   auto filePath = md->getPath();
   auto fileName = filePath.substr(filePath.rfind('/') + 1);
@@ -81,7 +86,7 @@ void MdReaderActivity::onEnter() {
 }
 
 void MdReaderActivity::onExit() {
-  ActivityWithSubactivity::onExit();
+  Activity::onExit();
 
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
 
@@ -99,20 +104,15 @@ void MdReaderActivity::onExit() {
 }
 
 void MdReaderActivity::loop() {
-  if (subActivity) {
-    subActivity->loop();
-    return;
-  }
-
   // Long press BACK (1s+) goes to file selection
   if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= goHomeMs) {
-    onGoBack();
+    activityManager.goToFileBrowser(mdFolderPath);
     return;
   }
 
   // Short press BACK goes directly to home
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() < goHomeMs) {
-    onGoHome();
+    activityManager.goHome();
     return;
   }
 

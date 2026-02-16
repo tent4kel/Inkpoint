@@ -27,11 +27,11 @@ std::string ReaderActivity::extractFolderPath(const std::string& filePath) {
 bool ReaderActivity::isXtcFile(const std::string& path) { return FsHelpers::hasXtcExtension(path); }
 
 bool ReaderActivity::isTxtFile(const std::string& path) {
-  return StringUtils::checkFileExtension(path, ".txt");
+  return FsHelpers::checkFileExtension(path, ".txt");
 }
 
 bool ReaderActivity::isMdFile(const std::string& path) {
-  return StringUtils::checkFileExtension(path, ".md") || StringUtils::checkFileExtension(path, ".markdown");
+  return FsHelpers::checkFileExtension(path, ".md") || FsHelpers::checkFileExtension(path, ".markdown");
 }
 
 bool ReaderActivity::isBmpFile(const std::string& path) { return FsHelpers::hasBmpExtension(path); }
@@ -127,9 +127,7 @@ void ReaderActivity::onGoToTxtReader(std::unique_ptr<Txt> txt) {
 void ReaderActivity::onGoToMdReader(std::unique_ptr<Markdown> md) {
   const auto mdPath = md->getPath();
   currentBookPath = mdPath;
-  exitActivity();
-  enterNewActivity(new MdReaderActivity(
-      renderer, mappedInput, std::move(md), [this, mdPath] { goToLibrary(mdPath); }, [this] { onGoBack(); }));
+  activityManager.replaceActivity(std::make_unique<MdReaderActivity>(renderer, mappedInput, std::move(md)));
 }
 
 void ReaderActivity::onEnter() {

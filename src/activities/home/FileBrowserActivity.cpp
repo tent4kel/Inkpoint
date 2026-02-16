@@ -92,11 +92,11 @@ void FileBrowserActivity::loadFiles() {
       files.emplace_back(std::string(name) + "/");
     } else {
       auto filename = std::string(name);
-      if (StringUtils::checkFileExtension(filename, ".epub") || StringUtils::checkFileExtension(filename, ".xtch") ||
-          StringUtils::checkFileExtension(filename, ".xtc") || StringUtils::checkFileExtension(filename, ".txt") ||
-          StringUtils::checkFileExtension(filename, ".md") || StringUtils::checkFileExtension(filename, ".bmp") ||
-          StringUtils::checkFileExtension(filename, ".markdown") || StringUtils::checkFileExtension(filename, ".csv") ||
-          StringUtils::checkFileExtension(filename, ".tsv") || StringUtils::checkFileExtension(filename, ".html")) {
+      if (FsHelpers::checkFileExtension(filename, ".epub") || FsHelpers::checkFileExtension(filename, ".xtch") ||
+          FsHelpers::checkFileExtension(filename, ".xtc") || FsHelpers::checkFileExtension(filename, ".txt") ||
+          FsHelpers::checkFileExtension(filename, ".md") || FsHelpers::checkFileExtension(filename, ".bmp") ||
+          FsHelpers::checkFileExtension(filename, ".markdown") || FsHelpers::checkFileExtension(filename, ".csv") ||
+          FsHelpers::checkFileExtension(filename, ".tsv") || FsHelpers::checkFileExtension(filename, ".html")) {
         files.emplace_back(filename);
       }
     }
