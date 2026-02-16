@@ -89,10 +89,11 @@ int8_t EpdFont::getKerning(const uint32_t leftCp, const uint32_t rightCp) const 
 
   while (left <= right) {
     const int mid = left + (right - left) / 2;
-    if (pairs[mid].pair == key) {
+    const uint32_t midKey = pairs[mid].pair;
+    if (midKey == key) {
       return pairs[mid].adjust;
     }
-    if (pairs[mid].pair < key) {
+    if (midKey < key) {
       left = mid + 1;
     } else {
       right = mid - 1;
@@ -117,10 +118,11 @@ uint32_t EpdFont::getLigature(const uint32_t leftCp, const uint32_t rightCp) con
 
   while (left <= right) {
     const int mid = left + (right - left) / 2;
-    if (pairs[mid].pair == key) {
+    const uint32_t midKey = pairs[mid].pair;
+    if (midKey == key) {
       return pairs[mid].ligatureCp;
     }
-    if (pairs[mid].pair < key) {
+    if (midKey < key) {
       left = mid + 1;
     } else {
       right = mid - 1;
