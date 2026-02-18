@@ -74,13 +74,14 @@ void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
 }
 
 int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontFamily::Style style) const {
-  if (fontMap.count(fontId) == 0) {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
 
   int w = 0, h = 0;
-  fontMap.at(fontId).getTextDimensions(text, &w, &h, style);
+  fontIt->second.getTextDimensions(text, &w, &h, style);
   return w;
 }
 
@@ -100,11 +101,12 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
     return;
   }
 
-  if (fontMap.count(fontId) == 0) {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return;
   }
-  const auto font = fontMap.at(fontId);
+  const auto& font = fontIt->second;
 
   // no printable characters
   if (!font.hasPrintableChars(text, style)) {
@@ -712,29 +714,33 @@ int GfxRenderer::getScreenHeight() const {
 }
 
 int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style style) const {
-  if (fontMap.count(fontId) == 0) {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
 
-  return fontMap.at(fontId).getGlyph(' ', style)->advanceX;
+  return fontIt->second.getGlyph(' ', style)->advanceX;
 }
 
 int GfxRenderer::getSpaceKernAdjust(const int fontId, const uint32_t leftCp, const uint32_t rightCp,
                                     const EpdFontFamily::Style style) const {
-  if (fontMap.count(fontId) == 0) return 0;
-  const auto& family = fontMap.at(fontId);
-  return family.getKerning(leftCp, ' ', style) + family.getKerning(' ', rightCp, style);
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) return 0;
+  const auto& font = fontMap.at(fontId);
+  return font.getKerning(leftCp, ' ', style) + font.getKerning(' ', rightCp, style);
 }
 
 int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint32_t rightCp,
                             const EpdFontFamily::Style style) const {
-  if (fontMap.count(fontId) == 0) return 0;
-  return fontMap.at(fontId).getKerning(leftCp, rightCp, style);
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) return 0;
+  return fontIt->second.getKerning(leftCp, rightCp, style);
 }
 
 int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFamily::Style style) const {
-  if (fontMap.count(fontId) == 0) {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
@@ -742,42 +748,46 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
   uint32_t cp;
   uint32_t prevCp = 0;
   int width = 0;
-  const EpdFontFamily& family = fontMap.at(fontId);
+  const auto& font = fontIt->second;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
-    cp = family.applyLigatures(cp, text, style);
+    cp = font.applyLigatures(cp, text, style);
+    width += font.getGlyph(cp, style)->advanceX;
     if (prevCp != 0) {
-      width += family.getKerning(prevCp, cp, style);
+      width += font.getKerning(prevCp, cp, style);
     }
-    width += family.getGlyph(cp, style)->advanceX;
+    width += font.getGlyph(cp, style)->advanceX;
     prevCp = cp;
   }
   return width;
 }
 
 int GfxRenderer::getFontAscenderSize(const int fontId) const {
-  if (fontMap.count(fontId) == 0) {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
 
-  return fontMap.at(fontId).getData(EpdFontFamily::REGULAR)->ascender;
+  return fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
 }
 
 int GfxRenderer::getLineHeight(const int fontId) const {
-  if (fontMap.count(fontId) == 0) {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
 
-  return fontMap.at(fontId).getData(EpdFontFamily::REGULAR)->advanceY;
+  return fontIt->second.getData(EpdFontFamily::REGULAR)->advanceY;
 }
 
 int GfxRenderer::getTextHeight(const int fontId) const {
-  if (fontMap.count(fontId) == 0) {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
-  return fontMap.at(fontId).getData(EpdFontFamily::REGULAR)->ascender;
+  return fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
 }
 
 void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y, const char* text, const bool black,
@@ -787,11 +797,13 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
     return;
   }
 
-  if (fontMap.count(fontId) == 0) {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return;
   }
-  const auto font = fontMap.at(fontId);
+
+  const auto& font = fontIt->second;
 
   // No printable characters
   if (!font.hasPrintableChars(text, style)) {
