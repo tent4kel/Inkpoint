@@ -51,15 +51,17 @@ void stripSoftHyphensInPlace(std::string& word) {
   }
 }
 
-// Returns the rendered width for a word while ignoring soft hyphen glyphs and optionally appending a visible hyphen.
+// Returns the advance width for a word while ignoring soft hyphen glyphs and optionally appending a visible hyphen.
+// Uses advance width (sum of glyph advances + kerning) rather than bounding box width so that italic glyph overhangs
+// don't inflate inter-word spacing.
 uint16_t measureWordWidth(const GfxRenderer& renderer, const int fontId, const std::string& word,
                           const EpdFontFamily::Style style, const bool appendHyphen = false) {
   if (word.size() == 1 && word[0] == ' ' && !appendHyphen) {
-    return renderer.getSpaceWidth(fontId);
+    return renderer.getSpaceWidth(fontId, style);
   }
   const bool hasSoftHyphen = containsSoftHyphen(word);
   if (!hasSoftHyphen && !appendHyphen) {
-    return renderer.getTextWidth(fontId, word.c_str(), style);
+    return renderer.getTextAdvanceX(fontId, word.c_str(), style);
   }
 
   std::string sanitized = word;
@@ -69,7 +71,7 @@ uint16_t measureWordWidth(const GfxRenderer& renderer, const int fontId, const s
   if (appendHyphen) {
     sanitized.push_back('-');
   }
-  return renderer.getTextWidth(fontId, sanitized.c_str(), style);
+  return renderer.getTextAdvanceX(fontId, sanitized.c_str(), style);
 }
 
 }  // namespace
@@ -99,7 +101,7 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   applyParagraphIndent();
 
   const int pageWidth = viewportWidth;
-  const int spaceWidth = renderer.getSpaceWidth(fontId);
+  const int spaceWidth = renderer.getSpaceWidth(fontId, EpdFontFamily::REGULAR);
   auto wordWidths = calculateWordWidths(renderer, fontId);
 
   std::vector<size_t> lineBreakIndices;
@@ -175,10 +177,11 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
       int gap = 0;
       if (j > static_cast<size_t>(i) && !continuesVec[j]) {
         gap = spaceWidth;
-        gap += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]));
+        gap += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]),
+                                           wordStyles[j - 1]);
       } else if (j > static_cast<size_t>(i) && continuesVec[j]) {
         // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
-        gap = renderer.getKerning(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]));
+        gap = renderer.getKerning(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]), wordStyles[j - 1]);
       }
       currlen += wordWidths[j] + gap;
 
@@ -289,11 +292,11 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
       if (!isFirstWord && !continuesVec[currentIndex]) {
         spacing = spaceWidth;
         spacing += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[currentIndex - 1]),
-                                               firstCodepoint(words[currentIndex]));
+                                               firstCodepoint(words[currentIndex]), wordStyles[currentIndex - 1]);
       } else if (!isFirstWord && continuesVec[currentIndex]) {
         // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
-        spacing =
-            renderer.getKerning(fontId, lastCodepoint(words[currentIndex - 1]), firstCodepoint(words[currentIndex]));
+        spacing = renderer.getKerning(fontId, lastCodepoint(words[currentIndex - 1]),
+                                      firstCodepoint(words[currentIndex]), wordStyles[currentIndex - 1]);
       }
       const int candidateWidth = spacing + wordWidths[currentIndex];
 
@@ -437,12 +440,14 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
       actualGapCount++;
       int naturalGap = spaceWidth;
       naturalGap += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[lastBreakAt + wordIdx - 1]),
-                                                firstCodepoint(words[lastBreakAt + wordIdx]));
+                                                firstCodepoint(words[lastBreakAt + wordIdx]),
+                                                wordStyles[lastBreakAt + wordIdx - 1]);
       totalNaturalGaps += naturalGap;
     } else if (wordIdx > 0 && continuesVec[lastBreakAt + wordIdx]) {
       // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
-      totalNaturalGaps += renderer.getKerning(fontId, lastCodepoint(words[lastBreakAt + wordIdx - 1]),
-                                              firstCodepoint(words[lastBreakAt + wordIdx]));
+      totalNaturalGaps +=
+          renderer.getKerning(fontId, lastCodepoint(words[lastBreakAt + wordIdx - 1]),
+                              firstCodepoint(words[lastBreakAt + wordIdx]), wordStyles[lastBreakAt + wordIdx - 1]);
     }
   }
 
@@ -476,14 +481,16 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     if (nextIsContinuation) {
       int advance = wordWidths[lastBreakAt + wordIdx];
       // Cross-boundary kerning for continuation words (e.g. nonbreaking spaces, attached punctuation)
-      advance += renderer.getKerning(fontId, lastCodepoint(words[lastBreakAt + wordIdx]),
-                                     firstCodepoint(words[lastBreakAt + wordIdx + 1]));
+      advance +=
+          renderer.getKerning(fontId, lastCodepoint(words[lastBreakAt + wordIdx]),
+                              firstCodepoint(words[lastBreakAt + wordIdx + 1]), wordStyles[lastBreakAt + wordIdx]);
       xpos += advance;
     } else {
       int gap = spaceWidth;
       if (wordIdx + 1 < lineWordCount) {
         gap += renderer.getSpaceKernAdjust(fontId, lastCodepoint(words[lastBreakAt + wordIdx]),
-                                           firstCodepoint(words[lastBreakAt + wordIdx + 1]));
+                                           firstCodepoint(words[lastBreakAt + wordIdx + 1]),
+                                           wordStyles[lastBreakAt + wordIdx]);
       }
       if (blockStyle.alignment == CssTextAlign::Justify && !isLastLine) {
         gap += justifyExtra;

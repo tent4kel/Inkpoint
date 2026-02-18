@@ -711,24 +711,26 @@ int GfxRenderer::getScreenHeight() const {
   return HalDisplay::DISPLAY_WIDTH;
 }
 
-int GfxRenderer::getSpaceWidth(const int fontId) const {
+int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style style) const {
   if (fontMap.count(fontId) == 0) {
     LOG_ERR("GFX", "Font %d not found", fontId);
     return 0;
   }
 
-  return fontMap.at(fontId).getGlyph(' ', EpdFontFamily::REGULAR)->advanceX;
+  return fontMap.at(fontId).getGlyph(' ', style)->advanceX;
 }
 
-int GfxRenderer::getSpaceKernAdjust(const int fontId, const uint32_t leftCp, const uint32_t rightCp) const {
+int GfxRenderer::getSpaceKernAdjust(const int fontId, const uint32_t leftCp, const uint32_t rightCp,
+                                    const EpdFontFamily::Style style) const {
   if (fontMap.count(fontId) == 0) return 0;
   const auto& family = fontMap.at(fontId);
-  return family.getKerning(leftCp, ' ') + family.getKerning(' ', rightCp);
+  return family.getKerning(leftCp, ' ', style) + family.getKerning(' ', rightCp, style);
 }
 
-int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint32_t rightCp) const {
+int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint32_t rightCp,
+                            const EpdFontFamily::Style style) const {
   if (fontMap.count(fontId) == 0) return 0;
-  return fontMap.at(fontId).getKerning(leftCp, rightCp);
+  return fontMap.at(fontId).getKerning(leftCp, rightCp, style);
 }
 
 int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFamily::Style style) const {
