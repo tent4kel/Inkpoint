@@ -323,6 +323,7 @@
       background-color: #d68910;
     }
     /* Action button styles */
+    .download-btn,
     .delete-btn,
     .rename-btn,
     .move-btn {
@@ -333,6 +334,13 @@
       padding: 4px 8px;
       border-radius: 4px;
       transition: all 0.15s;
+    }
+    .download-btn {
+      color: #27ae60;
+      text-decoration: none;
+    }
+    .download-btn:hover {
+      background-color: #e8f6e9;
     }
     .delete-btn {
       color: #95a5a6;
@@ -354,7 +362,7 @@
       background-color: #e6f7f4;
     }
     .actions-col {
-      width: 140px;
+      width: 170px;
       text-align: center;
     }
     .action-icon-group {
@@ -606,8 +614,9 @@
         font-size: 1.1em;
       }
       .actions-col {
-        width: 120px;
+        width: 145px;
       }
+      .download-btn,
       .delete-btn,
       .rename-btn,
       .move-btn {
@@ -638,6 +647,9 @@
   </div>
 
   <div class="action-buttons">
+    <label style="display:flex;align-items:center;gap:4px;font-size:0.9em;color:#7f8c8d;cursor:pointer;user-select:none">
+      <input type="checkbox" id="showHidden" onchange="toggleHidden()"> Show hidden
+    </label>
     <button class="action-btn upload-action-btn" onclick="openUploadModal()">📤 Upload</button>
     <button class="action-btn folder-action-btn" onclick="openFolderModal()">📁 New Folder</button>
   </div>
@@ -771,7 +783,17 @@
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)).toLocaleString() + ' ' + sizes[i];
   }
 
+  function toggleHidden() {
+    const checked = document.getElementById('showHidden').checked;
+    localStorage.setItem('showHidden', checked ? '1' : '0');
+    hydrate();
+  }
+
   async function hydrate() {
+    // Restore showHidden checkbox from localStorage
+    const showHidden = localStorage.getItem('showHidden') === '1';
+    document.getElementById('showHidden').checked = showHidden;
+
     // Close modals when clicking overlay
     document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
       overlay.addEventListener('click', function(e) {
@@ -800,7 +822,7 @@
 
     let files = [];
     try {
-      const response = await fetch('/api/files?path=' + encodeURIComponent(currentPath));
+      const response = await fetch('/api/files?path=' + encodeURIComponent(currentPath) + (showHidden ? '&showHidden=1' : ''));
       if (!response.ok) {
         throw new Error('Failed to load files: ' + response.status + ' ' + response.statusText);
       }
@@ -859,6 +881,7 @@
           fileTableContent += `<td>${file.name.split('.').pop().toUpperCase()}</td>`;
           fileTableContent += `<td>${formatFileSize(file.size)}</td>`;
           fileTableContent += `<td class="actions-col"><div class="action-icon-group">`;
+          fileTableContent += `<a class="download-btn" href="/download?path=${encodeURIComponent(filePath)}" title="Download">⬇️</a>`;
           fileTableContent += `<button class="move-btn" onclick="openMoveModal('${file.name.replaceAll("'", "\\'")}', '${filePath.replaceAll("'", "\\'")}' )" title="Move file">📂</button>`;
           fileTableContent += `<button class="rename-btn" onclick="openRenameModal('${file.name.replaceAll("'", "\\'")}', '${filePath.replaceAll("'", "\\'")}' )" title="Rename file">✏️</button>`;
           fileTableContent += `<button class="delete-btn" onclick="openDeleteModal('${file.name.replaceAll("'", "\\'")}', '${filePath.replaceAll("'", "\\'")}', false)" title="Delete file">🗑️</button>`;
