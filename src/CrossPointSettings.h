@@ -116,6 +116,9 @@ class CrossPointSettings {
   // Short power button press actions
   enum SHORT_PWRBTN { IGNORE = 0, SLEEP = 1, PAGE_TURN = 2, SHORT_PWRBTN_COUNT };
 
+  // Anki daily goal options (number of cards per session bump)
+  enum ANKI_DAILY_GOAL { GOAL_5 = 0, GOAL_10 = 1, GOAL_15 = 2, GOAL_20 = 3, GOAL_30 = 4, GOAL_50 = 5, ANKI_DAILY_GOAL_COUNT };
+
   // Hide battery percentage
   enum HIDE_BATTERY_PERCENTAGE { HIDE_NEVER = 0, HIDE_READER = 1, HIDE_ALWAYS = 2, HIDE_BATTERY_PERCENTAGE_COUNT };
 
@@ -174,6 +177,8 @@ class CrossPointSettings {
   uint8_t fadingFix = 0;
   // Use book's embedded CSS styles for EPUB rendering (1 = enabled, 0 = disabled)
   uint8_t embeddedStyle = 1;
+  // Anki daily goal (index into ANKI_DAILY_GOAL enum, default GOAL_10 = 10 cards)
+  uint8_t ankiDailyGoal = GOAL_10;
 
   ~CrossPointSettings() = default;
 
@@ -194,6 +199,7 @@ class CrossPointSettings {
   float getReaderLineCompression() const;
   unsigned long getSleepTimeoutMs() const;
   int getRefreshFrequency() const;
+  uint16_t getDailyGoalValue() const;
 };
 
 // Helper macro to access settings

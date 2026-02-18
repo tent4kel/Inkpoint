@@ -32,6 +32,9 @@ int HomeActivity::getMenuItemCount() const {
   if (hasInstapaper) {
     count++;
   }
+  if (onAnkiExplorerOpen) {
+    count++;
+  }
   return count;
 }
 
@@ -199,6 +202,7 @@ void HomeActivity::loop() {
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
     const int instapaperIdx = hasInstapaper ? idx++ : -1;
+    const int ankiExplorerIdx = onAnkiExplorerOpen ? idx++ : -1;
     const int fileTransferIdx = idx++;
     const int settingsIdx = idx;
 
@@ -212,6 +216,8 @@ void HomeActivity::loop() {
       onOpdsBrowserOpen();
     } else if (menuSelectedIndex == instapaperIdx) {
       if (onInstapaperOpen) onInstapaperOpen();
+    } else if (menuSelectedIndex == ankiExplorerIdx) {
+      if (onAnkiExplorerOpen) onAnkiExplorerOpen();
     } else if (menuSelectedIndex == fileTransferIdx) {
       onFileTransferOpen();
     } else if (menuSelectedIndex == settingsIdx) {
@@ -235,15 +241,20 @@ void HomeActivity::render(Activity::RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   // Build menu items dynamically
+  int insertPos = 2;
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
                                         tr(STR_SETTINGS_TITLE)};
-  int insertPos = 2;
   if (hasOpdsUrl) {
     menuItems.insert(menuItems.begin() + insertPos, tr(STR_OPDS_BROWSER));
     insertPos++;
   }
   if (hasInstapaper) {
     menuItems.insert(menuItems.begin() + insertPos, "Instapaper");
+    insertPos++;
+  }
+  if (onAnkiExplorerOpen) {
+    menuItems.insert(menuItems.begin() + insertPos, "Flashcards");
+    insertPos++;
   }
 
   GUI.drawButtonMenu(

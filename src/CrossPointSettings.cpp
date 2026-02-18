@@ -134,6 +134,7 @@ uint8_t CrossPointSettings::writeSettings(FsFile& file, bool count_only) const {
   writer.writeItem(file, frontButtonRight);
   writer.writeItem(file, fadingFix);
   writer.writeItem(file, embeddedStyle);
+  writer.writeItem(file, ankiDailyGoal);
   // New fields need to be added at end for backward compatibility
 
   return writer.item_count;
@@ -261,6 +262,8 @@ bool CrossPointSettings::loadFromFile() {
     if (++settingsRead >= fileSettingsCount) break;
     serialization::readPod(inputFile, embeddedStyle);
     if (++settingsRead >= fileSettingsCount) break;
+    readAndValidate(inputFile, ankiDailyGoal, ANKI_DAILY_GOAL_COUNT);
+    if (++settingsRead >= fileSettingsCount) break;
     // New fields added at end for backward compatibility
   } while (false);
 
@@ -289,16 +292,6 @@ float CrossPointSettings::getReaderLineCompression() const {
           return 1.1f;
       }
     case NOTOSANS:
-      switch (lineSpacing) {
-        case TIGHT:
-          return 0.90f;
-        case NORMAL:
-        default:
-          return 0.95f;
-        case WIDE:
-          return 1.0f;
-      }
-    case OPENDYSLEXIC:
       switch (lineSpacing) {
         case TIGHT:
           return 0.90f;
@@ -343,6 +336,17 @@ int CrossPointSettings::getRefreshFrequency() const {
   }
 }
 
+uint16_t CrossPointSettings::getDailyGoalValue() const {
+  switch (ankiDailyGoal) {
+    case GOAL_5: return 5;
+    case GOAL_10: default: return 10;
+    case GOAL_15: return 15;
+    case GOAL_20: return 20;
+    case GOAL_30: return 30;
+    case GOAL_50: return 50;
+  }
+}
+
 int CrossPointSettings::getReaderFontId() const {
   switch (fontFamily) {
     case BOOKERLY:
@@ -369,18 +373,6 @@ int CrossPointSettings::getReaderFontId() const {
           return NOTOSANS_16_FONT_ID;
         case EXTRA_LARGE:
           return NOTOSANS_18_FONT_ID;
-      }
-    case OPENDYSLEXIC:
-      switch (fontSize) {
-        case SMALL:
-          return OPENDYSLEXIC_8_FONT_ID;
-        case MEDIUM:
-        default:
-          return OPENDYSLEXIC_10_FONT_ID;
-        case LARGE:
-          return OPENDYSLEXIC_12_FONT_ID;
-        case EXTRA_LARGE:
-          return OPENDYSLEXIC_14_FONT_ID;
       }
   }
 }
