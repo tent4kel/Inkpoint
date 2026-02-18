@@ -14,12 +14,22 @@
 #include "fontIds.h"
 
 namespace {
-constexpr int BUTTON_HINTS_HEIGHT = 45;
 constexpr int LABEL_HEIGHT = 30;
 constexpr const char* TEMP_MD_PATH = "/.ankix/_card.md";
 constexpr const char* ANKI_SETTINGS_PATH = "/.ankix/anki_settings.bin";
 constexpr uint8_t ANKI_SETTINGS_VERSION = 2;
+constexpr uint8_t DECK_SETTINGS_VERSION = 1;
 constexpr unsigned long LONG_PRESS_MS = 800;
+
+// Convert "/anki/Deck.csv" → "/.ankix/Deck.settings"
+std::string deckSettingsPath(const std::string& csvPath) {
+  size_t lastSlash = csvPath.find_last_of('/');
+  std::string filename = (lastSlash != std::string::npos) ? csvPath.substr(lastSlash + 1) : csvPath;
+  if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".csv") {
+    filename = filename.substr(0, filename.size() - 4);
+  }
+  return "/.ankix/" + filename + ".settings";
+}
 }  // namespace
 
 // --- Anki-specific settings (independent of reader) ---
@@ -46,37 +56,72 @@ int AnkiActivity::getFontIdForAnkiSize() const {
 }
 
 void AnkiActivity::loadAnkiSettings() {
-  FsFile f;
-  if (!Storage.openFileForRead("ANK", ANKI_SETTINGS_PATH, f)) {
-    return;  // Defaults are fine
+  // Global settings: orientation (portrait/landscape)
+  {
+    FsFile f;
+    if (Storage.openFileForRead("ANK", ANKI_SETTINGS_PATH, f)) {
+      uint8_t version;
+      serialization::readPod(f, version);
+      if (version == ANKI_SETTINGS_VERSION) {
+        serialization::readPod(f, ankiFontSize);  // legacy global font size (fallback)
+        uint8_t portrait;
+        serialization::readPod(f, portrait);
+        ankiPortrait = portrait != 0;
+        uint8_t swap;
+        serialization::readPod(f, swap);
+        ankiSwapFrontBack = swap != 0;  // legacy global swap (fallback)
+      }
+      f.close();
+    }
   }
-  uint8_t version;
-  serialization::readPod(f, version);
-  if (version == ANKI_SETTINGS_VERSION) {
-    serialization::readPod(f, ankiFontSize);
-    uint8_t portrait;
-    serialization::readPod(f, portrait);
-    ankiPortrait = portrait != 0;
-    uint8_t swap;
-    serialization::readPod(f, swap);
-    ankiSwapFrontBack = swap != 0;
+
+  // Per-deck settings: font size + swap (overrides global if file exists)
+  {
+    std::string path = deckSettingsPath(csvPath);
+    FsFile f;
+    if (Storage.openFileForRead("ANK", path.c_str(), f)) {
+      uint8_t version;
+      serialization::readPod(f, version);
+      if (version == DECK_SETTINGS_VERSION) {
+        serialization::readPod(f, ankiFontSize);
+        uint8_t swap;
+        serialization::readPod(f, swap);
+        ankiSwapFrontBack = swap != 0;
+      }
+      f.close();
+    }
   }
-  f.close();
+
   if (ankiFontSize > 3) ankiFontSize = 1;
 }
 
 void AnkiActivity::saveAnkiSettings() {
-  FsFile f;
-  if (!Storage.openFileForWrite("ANK", ANKI_SETTINGS_PATH, f)) {
-    return;
+  // Global settings: orientation only
+  {
+    FsFile f;
+    if (Storage.openFileForWrite("ANK", ANKI_SETTINGS_PATH, f)) {
+      serialization::writePod(f, ANKI_SETTINGS_VERSION);
+      serialization::writePod(f, ankiFontSize);
+      uint8_t portrait = ankiPortrait ? 1 : 0;
+      serialization::writePod(f, portrait);
+      uint8_t swap = ankiSwapFrontBack ? 1 : 0;
+      serialization::writePod(f, swap);
+      f.close();
+    }
   }
-  serialization::writePod(f, ANKI_SETTINGS_VERSION);
-  serialization::writePod(f, ankiFontSize);
-  uint8_t portrait = ankiPortrait ? 1 : 0;
-  serialization::writePod(f, portrait);
-  uint8_t swap = ankiSwapFrontBack ? 1 : 0;
-  serialization::writePod(f, swap);
-  f.close();
+
+  // Per-deck settings: font size + swap
+  {
+    std::string path = deckSettingsPath(csvPath);
+    FsFile f;
+    if (Storage.openFileForWrite("ANK", path.c_str(), f)) {
+      serialization::writePod(f, DECK_SETTINGS_VERSION);
+      serialization::writePod(f, ankiFontSize);
+      uint8_t swap = ankiSwapFrontBack ? 1 : 0;
+      serialization::writePod(f, swap);
+      f.close();
+    }
+  }
 }
 
 void AnkiActivity::applyOrientation() {
@@ -99,6 +144,31 @@ void AnkiActivity::toggleOrientation() {
   applyOrientation();
   saveAnkiSettings();
   LOG_DBG("ANK", "Orientation toggled to %s", ankiPortrait ? "portrait" : "landscape");
+}
+
+AnkiActivity::CardMargins AnkiActivity::getCardMargins() const {
+  int mTop, mRight, mBottom, mLeft;
+  renderer.getOrientedViewableTRBL(&mTop, &mRight, &mBottom, &mLeft);
+
+  auto metrics = UITheme::getInstance().getMetrics();
+
+  // Label bar is always at logical top
+  mTop += cachedScreenMargin + LABEL_HEIGHT;
+  mLeft += cachedScreenMargin;
+  mRight += cachedScreenMargin;
+  mBottom += cachedScreenMargin;
+
+  // Button hints are drawn at the physical bottom of the panel (portrait coords).
+  // In portrait, physical bottom = logical bottom.
+  // In LandscapeCCW, physical bottom = logical right.
+  if (ankiPortrait) {
+    mBottom += metrics.buttonHintsHeight;
+    mRight += metrics.sideButtonHintsWidth;
+  } else {
+    mRight += metrics.buttonHintsHeight;
+  }
+
+  return {mTop, mRight, mBottom, mLeft};
 }
 
 // --- Activity lifecycle ---
@@ -126,6 +196,8 @@ void AnkiActivity::onEnter() {
   if (!deck->load()) {
     LOG_ERR("ANK", "Failed to load deck: %s", csvPath.c_str());
   }
+  deck->buildDueList();
+  reviewCompleted = false;
 
   // Save state for boot resume
   APP_STATE.openEpubPath = csvPath;
@@ -206,14 +278,14 @@ void AnkiActivity::loop() {
 
   switch (state) {
     case State::DECK_SUMMARY: {
-      // Upper rocker or Back button exits
-      if (mappedInput.wasReleased(MappedInputManager::Button::Up) ||
-          mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      // Back button or upper rocker exits
+      if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+          mappedInput.wasReleased(MappedInputManager::Button::Up)) {
         onGoBack();
         return;
       }
-      // Third front button toggles swap front/back
-      if (mappedInput.getPressedFrontButton() == 2) {
+      // Left button toggles swap front/back
+      if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
         ankiSwapFrontBack = !ankiSwapFrontBack;
         saveAnkiSettings();
         updateRequired = true;
@@ -222,13 +294,16 @@ void AnkiActivity::loop() {
       if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
         if (deck) {
           deck->buildDueList();
+          if (!deck->currentCard()) {
+            // No due cards — study ahead with future cards
+            deck->buildStudyAheadList();
+          }
           if (deck->currentCard()) {
             state = State::FRONT;
             buildCardPages(frontContent());
             currentCardPage = 0;
-          } else {
-            state = State::SESSION_COMPLETE;
           }
+          // If still no cards (empty deck), stay on DECK_SUMMARY
           updateRequired = true;
         }
       }
@@ -238,6 +313,8 @@ void AnkiActivity::loop() {
     case State::FRONT: {
       // Upper rocker = back to deck summary (exit review)
       if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+        deck->buildDueList();  // Refresh due count for summary
+        reviewCompleted = true;
         state = State::DECK_SUMMARY;
         cardPages.clear();
         updateRequired = true;
@@ -275,20 +352,13 @@ void AnkiActivity::loop() {
           buildCardPages(frontContent());
           currentCardPage = 0;
         } else {
-          state = State::SESSION_COMPLETE;
+          // Round complete — rebuild due list and return to summary
+          deck->buildDueList();
+          reviewCompleted = true;
+          state = State::DECK_SUMMARY;
           cardPages.clear();
         }
         updateRequired = true;
-      }
-      break;
-    }
-
-    case State::SESSION_COMPLETE: {
-      if (mappedInput.wasReleased(MappedInputManager::Button::Up) ||
-          mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-          mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-        onGoBack();
-        return;
       }
       break;
     }
@@ -319,15 +389,9 @@ void AnkiActivity::buildCardPages(const std::string& mdText) {
   }
 
   // Compute viewport (content area between top bar and button hints)
-  int mTop, mRight, mBottom, mLeft;
-  renderer.getOrientedViewableTRBL(&mTop, &mRight, &mBottom, &mLeft);
-  mTop += cachedScreenMargin + LABEL_HEIGHT;
-  mLeft += cachedScreenMargin;
-  mRight += cachedScreenMargin;
-  mBottom += cachedScreenMargin + BUTTON_HINTS_HEIGHT;
-
-  const uint16_t vpWidth = renderer.getScreenWidth() - mLeft - mRight;
-  const uint16_t vpHeight = renderer.getScreenHeight() - mTop - mBottom;
+  const auto m = getCardMargins();
+  const uint16_t vpWidth = renderer.getScreenWidth() - m.left - m.right;
+  const uint16_t vpHeight = renderer.getScreenHeight() - m.top - m.bottom;
 
   // Track content height for vertical centering
   int totalContentHeight = 0;
@@ -368,9 +432,6 @@ void AnkiActivity::renderScreen() {
     case State::BACK:
       renderCardSide("BACK");
       break;
-    case State::SESSION_COMPLETE:
-      renderSessionComplete();
-      break;
   }
 
   if (pagesUntilFullRefresh <= 1) {
@@ -384,27 +445,22 @@ void AnkiActivity::renderScreen() {
   // Anti-aliasing pass for card views
   if (SETTINGS.textAntiAliasing && (state == State::FRONT || state == State::BACK)) {
     if (!cardPages.empty() && currentCardPage < static_cast<int>(cardPages.size())) {
-      int mTop, mRight, mBottom, mLeft;
-      renderer.getOrientedViewableTRBL(&mTop, &mRight, &mBottom, &mLeft);
-      mTop += cachedScreenMargin + LABEL_HEIGHT;
-      mLeft += cachedScreenMargin;
-      mBottom += cachedScreenMargin + BUTTON_HINTS_HEIGHT;
-
-      const int vpHeight = renderer.getScreenHeight() - mTop - mBottom;
+      const auto m = getCardMargins();
+      const int vpHeight = renderer.getScreenHeight() - m.top - m.bottom;
       const int yOffset = (cardPages.size() == 1 && cardContentHeight < vpHeight)
-                              ? mTop + (vpHeight - cardContentHeight) / 2
-                              : mTop;
+                              ? m.top + (vpHeight - cardContentHeight) / 2
+                              : m.top;
 
       renderer.storeBwBuffer();
 
       renderer.clearScreen(0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
-      cardPages[currentCardPage]->render(renderer, cachedFontId, mLeft, yOffset);
+      cardPages[currentCardPage]->render(renderer, cachedFontId, m.left, yOffset);
       renderer.copyGrayscaleLsbBuffers();
 
       renderer.clearScreen(0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
-      cardPages[currentCardPage]->render(renderer, cachedFontId, mLeft, yOffset);
+      cardPages[currentCardPage]->render(renderer, cachedFontId, m.left, yOffset);
       renderer.copyGrayscaleMsbBuffers();
 
       renderer.displayGrayBuffer();
@@ -415,14 +471,22 @@ void AnkiActivity::renderScreen() {
 }
 
 void AnkiActivity::renderDeckSummary() {
+  const int screenH = renderer.getScreenHeight();
+  const int lineH = renderer.getLineHeight(UI_12_FONT_ID);
+
   if (!deck) {
-    renderer.drawCenteredText(UI_12_FONT_ID, 300, "Failed to load deck", true, EpdFontFamily::BOLD);
-    GUI.drawButtonHints(renderer, "", "", "", "");
+    renderer.drawCenteredText(UI_12_FONT_ID, screenH / 2, "Failed to load deck", true, EpdFontFamily::BOLD);
+    const auto labels = mappedInput.mapLabels("Back", "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     return;
   }
 
-  int y = 100;
-  const int lineH = renderer.getLineHeight(UI_12_FONT_ID);
+  const size_t dueCount = deck->getDueCount();
+
+  // Vertically center the content block
+  const int numLines = 6 + (reviewCompleted && dueCount == 0 ? 1 : 0);
+  const int blockHeight = lineH * numLines + 8 * 4 + lineH * 2;
+  int y = (screenH - blockHeight) / 2;
 
   // Deck title
   renderer.drawCenteredText(cachedFontId, y, deck->getTitle().c_str(), true, EpdFontFamily::BOLD);
@@ -438,29 +502,37 @@ void AnkiActivity::renderDeckSummary() {
   renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
   y += lineH + 8;
 
-  snprintf(buf, sizeof(buf), "Reviewed: %u/10", ANKI_SESSION.getCardsReviewed());
+  snprintf(buf, sizeof(buf), "Reviewed: %u/%u", ANKI_SESSION.getCardsReviewed(), SETTINGS.getDailyGoalValue());
   renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
   y += lineH + 8;
 
   snprintf(buf, sizeof(buf), "Showing: %s first", ankiSwapFrontBack ? "Back" : "Front");
   renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
+  y += lineH + 8;
+
+  snprintf(buf, sizeof(buf), "Due: %zu", dueCount);
+  renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
   y += lineH * 2;
 
-  renderer.drawCenteredText(UI_12_FONT_ID, y, "Press any button to start", true);
+  if (reviewCompleted && dueCount == 0) {
+    renderer.drawCenteredText(UI_12_FONT_ID, y, "Wow, you made it! No cards due!", true);
+  }
 
-  GUI.drawButtonHints(renderer, "", "Start", "Swap", "");
+  const char* startLabel = !reviewCompleted ? "Start" : (dueCount > 0 ? "Again" : "Go on");
+  const auto labels = mappedInput.mapLabels("Back", startLabel, "Swap", "");
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   if (ankiPortrait) {
     GUI.drawSideButtonHints(renderer, "Back", "");
   }
 }
 
 void AnkiActivity::renderCardSide(const char* label) {
-  int mTop, mRight, mBottom, mLeft;
-  renderer.getOrientedViewableTRBL(&mTop, &mRight, &mBottom, &mLeft);
+  const auto m = getCardMargins();
 
-  const int topY = mTop + cachedScreenMargin;
-  const int leftX = mLeft + cachedScreenMargin;
-  const int rightX = renderer.getScreenWidth() - mRight - cachedScreenMargin;
+  // The label bar sits at the top of the content area, just inside the top margin
+  const int topY = m.top - LABEL_HEIGHT;
+  const int leftX = m.left;
+  const int rightX = renderer.getScreenWidth() - m.right;
 
   // Top bar: label on left, status info on right
   renderer.drawText(SMALL_FONT_ID, leftX, topY, label);
@@ -479,22 +551,20 @@ void AnkiActivity::renderCardSide(const char* label) {
   const int lineY = topY + LABEL_HEIGHT - 5;
   renderer.drawLine(leftX, lineY, rightX, lineY);
 
-  // Content area margins
-  const int contentTop = topY + LABEL_HEIGHT;
-  const int contentLeft = leftX;
-  const int contentBottom = mBottom + cachedScreenMargin + BUTTON_HINTS_HEIGHT;
-  const int vpHeight = renderer.getScreenHeight() - contentTop - contentBottom;
+  // Content area
+  const int vpHeight = renderer.getScreenHeight() - m.top - m.bottom;
 
   // Render card content — vertically centered if single page and content fits
   if (!cardPages.empty() && currentCardPage < static_cast<int>(cardPages.size())) {
-    int yOffset = contentTop;
+    int yOffset = m.top;
     if (cardPages.size() == 1 && cardContentHeight < vpHeight) {
-      yOffset = contentTop + (vpHeight - cardContentHeight) / 2;
+      yOffset = m.top + (vpHeight - cardContentHeight) / 2;
     }
-    cardPages[currentCardPage]->render(renderer, cachedFontId, contentLeft, yOffset);
+    cardPages[currentCardPage]->render(renderer, cachedFontId, leftX, yOffset);
   }
 
-  // Button hints
+  // Button hints — grading buttons use raw front button order (not remapped),
+  // because getPressedFrontButton() returns the raw physical index
   if (state == State::FRONT) {
     GUI.drawButtonHints(renderer, "", "", "", "");
   } else {
@@ -505,27 +575,4 @@ void AnkiActivity::renderCardSide(const char* label) {
   }
 }
 
-void AnkiActivity::renderSessionComplete() {
-  const int screenH = renderer.getScreenHeight();
-  const int lineH = renderer.getLineHeight(UI_12_FONT_ID);
-  int y = screenH / 2 - lineH * 2;
-
-  renderer.drawCenteredText(cachedFontId, y, "Session Complete", true, EpdFontFamily::BOLD);
-  y += lineH * 2;
-
-  if (deck) {
-    char buf[64];
-    snprintf(buf, sizeof(buf), "Cards reviewed: %zu", deck->getDuePosition());
-    renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
-    y += lineH + 8;
-
-    snprintf(buf, sizeof(buf), "Session: %u  (%u/10)", ANKI_SESSION.getSession(), ANKI_SESSION.getCardsReviewed());
-    renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
-  }
-
-  GUI.drawButtonHints(renderer, "", "OK", "", "");
-  if (ankiPortrait) {
-    GUI.drawSideButtonHints(renderer, "Back", "");
-  }
-}
 
