@@ -4,9 +4,10 @@
 #include <Logging.h>
 #include <Serialization.h>
 
+#include "CrossPointSettings.h"
+
 namespace {
 constexpr const char* SESSION_PATH = "/.ankix/global.session";
-constexpr uint16_t BUMP_THRESHOLD = 10;
 }  // namespace
 
 AnkiSessionManager AnkiSessionManager::inst;
@@ -47,8 +48,16 @@ void AnkiSessionManager::save() {
 bool AnkiSessionManager::onCardReviewed() {
   cardsReviewedThisSession++;
 
-  bool shouldBump = cardsReviewedThisSession >= BUMP_THRESHOLD;
-  if (!shouldBump && totalDueThisSession > 0 && totalDueThisSession < BUMP_THRESHOLD) {
+  const uint16_t goal = SETTINGS.getDailyGoalValue();
+
+  // Already bumped this visit — just save reviewed count
+  if (sessionBumpedThisRun) {
+    save();
+    return false;
+  }
+
+  bool shouldBump = cardsReviewedThisSession >= goal;
+  if (!shouldBump && totalDueThisSession > 0 && totalDueThisSession < goal) {
     shouldBump = cardsReviewedThisSession >= totalDueThisSession;
   }
 
@@ -56,6 +65,7 @@ bool AnkiSessionManager::onCardReviewed() {
     globalSession++;
     cardsReviewedThisSession = 0;
     totalDueThisSession = 0;
+    sessionBumpedThisRun = true;
     save();
     LOG_DBG("ANK", "Session bumped to %u", globalSession);
     return true;
