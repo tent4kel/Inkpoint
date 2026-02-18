@@ -351,6 +351,13 @@ enum class StrId : uint16_t {
   STR_BOOK_S_STYLE,
   STR_EMBEDDED_STYLE,
   STR_OPDS_SERVER_URL,
+  STR_ANKI_DAILY_GOAL,
+  STR_GOAL_5,
+  STR_GOAL_10,
+  STR_GOAL_15,
+  STR_GOAL_20,
+  STR_GOAL_30,
+  STR_GOAL_50,
   // Sentinel - must be last
   _COUNT
 };

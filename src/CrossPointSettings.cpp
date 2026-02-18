@@ -134,6 +134,7 @@ uint8_t CrossPointSettings::writeSettings(FsFile& file, bool count_only) const {
   writer.writeItem(file, frontButtonRight);
   writer.writeItem(file, fadingFix);
   writer.writeItem(file, embeddedStyle);
+  writer.writeItem(file, ankiDailyGoal);
   // New fields need to be added at end for backward compatibility
 
   return writer.item_count;
@@ -261,6 +262,8 @@ bool CrossPointSettings::loadFromFile() {
     if (++settingsRead >= fileSettingsCount) break;
     serialization::readPod(inputFile, embeddedStyle);
     if (++settingsRead >= fileSettingsCount) break;
+    readAndValidate(inputFile, ankiDailyGoal, ANKI_DAILY_GOAL_COUNT);
+    if (++settingsRead >= fileSettingsCount) break;
     // New fields added at end for backward compatibility
   } while (false);
 
@@ -340,6 +343,17 @@ int CrossPointSettings::getRefreshFrequency() const {
       return 15;
     case REFRESH_30:
       return 30;
+  }
+}
+
+uint16_t CrossPointSettings::getDailyGoalValue() const {
+  switch (ankiDailyGoal) {
+    case GOAL_5: return 5;
+    case GOAL_10: default: return 10;
+    case GOAL_15: return 15;
+    case GOAL_20: return 20;
+    case GOAL_30: return 30;
+    case GOAL_50: return 50;
   }
 }
 
