@@ -16,6 +16,7 @@ struct DeckInfo {
   std::string title;
   uint16_t totalCards = 0;
   uint16_t dueCount = 0;
+  uint32_t lastOpened = 0;  // globalSession value when deck was last opened
 };
 
 class AnkiDeckExplorerActivity final : public Activity {
@@ -24,6 +25,8 @@ class AnkiDeckExplorerActivity final : public Activity {
                                      const std::function<void()>& onGoBack,
                                      const std::function<void(const std::string&)>& onOpenDeck)
       : Activity("AnkiExplorer", renderer, mappedInput), onGoBack(onGoBack), onOpenDeck(onOpenDeck) {}
+
+  enum class SortMode { DUE, LAST_OPENED, NAME };
 
   void onEnter() override;
   void onExit() override;
@@ -39,6 +42,7 @@ class AnkiDeckExplorerActivity final : public Activity {
   int selectorIndex = 0;
   bool scanning = false;
   std::string statusMessage;
+  SortMode sortMode = SortMode::DUE;
 
   const std::function<void()> onGoBack;
   const std::function<void(const std::string&)> onOpenDeck;
@@ -50,7 +54,9 @@ class AnkiDeckExplorerActivity final : public Activity {
   void loadDeckIndex();
   void saveDeckIndex();
   void scanDecks();
-  void sortByDueCount();
+  void sortDecks();
+  void refreshDueCounts();
 
   static std::string titleFromPath(const std::string& path);
+  const char* sortModeLabel() const;
 };

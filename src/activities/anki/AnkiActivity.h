@@ -16,7 +16,7 @@
 
 class AnkiActivity final : public Activity {
  public:
-  enum class State { DECK_SUMMARY, FRONT, BACK, SESSION_COMPLETE };
+  enum class State { DECK_SUMMARY, FRONT, BACK };
 
   explicit AnkiActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string csvPath,
                         const std::function<void()>& onGoBack)
@@ -47,6 +47,7 @@ class AnkiActivity final : public Activity {
   bool ankiPortrait = true;   // true=Portrait, false=Landscape CCW
   bool ankiSwapFrontBack = false;  // Show back side first when true
   bool longPressHandled = false;  // Prevent long press re-trigger
+  bool reviewCompleted = false;   // True after completing a review round
   int cachedFontId = 0;
   int cachedScreenMargin = 0;
 
@@ -58,10 +59,13 @@ class AnkiActivity final : public Activity {
   void renderScreen();
   void renderDeckSummary();
   void renderCardSide(const char* label);
-  void renderSessionComplete();
 
   // Build rendered pages from a markdown string
   void buildCardPages(const std::string& mdText);
+
+  // Card viewport margins (accounts for orientation-dependent hint positions)
+  struct CardMargins { int top, right, bottom, left; };
+  CardMargins getCardMargins() const;
 
   // Anki-specific settings persistence
   void loadAnkiSettings();

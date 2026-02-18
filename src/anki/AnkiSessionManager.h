@@ -8,6 +8,7 @@ class AnkiSessionManager {
   uint32_t globalSession = 0;
   uint16_t cardsReviewedThisSession = 0;
   uint16_t totalDueThisSession = 0;
+  bool sessionBumpedThisRun = false;  // Runtime only — caps to one bump per explorer visit
 
   AnkiSessionManager() = default;
   void ensureAnkixDir();
@@ -27,6 +28,9 @@ class AnkiSessionManager {
 
   // Set total due cards (called by explorer after scanning)
   void setTotalDue(uint16_t n) { totalDueThisSession = n; }
+
+  // Reset the per-visit bump cap (call when returning to explorer)
+  void resetSessionBump() { sessionBumpedThisRun = false; }
 
   // Called after each card is graded. Returns true if session bumped.
   bool onCardReviewed();

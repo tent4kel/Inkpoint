@@ -32,14 +32,10 @@ void AnkiDeckExplorerActivity::onEnter() {
   scanning = false;
   statusMessage.clear();
 
-  loadDeckIndex();
+  ANKI_SESSION.resetSessionBump();
 
-  // Update totalDue on session manager from cached data
-  uint16_t totalDue = 0;
-  for (const auto& d : decks) {
-    totalDue += d.dueCount;
-  }
-  ANKI_SESSION.setTotalDue(totalDue);
+  loadDeckIndex();
+  refreshDueCounts();
 
   updateRequired = true;
   xTaskCreate(&AnkiDeckExplorerActivity::taskTrampoline, "DeckExplorer", 4096, this, 1, &displayTaskHandle);
@@ -91,6 +87,10 @@ void AnkiDeckExplorerActivity::loadDeckIndex() {
     file.read(reinterpret_cast<uint8_t*>(&info.path[0]), pathLen);
     serialization::readPod(file, info.totalCards);
     serialization::readPod(file, info.dueCount);
+    // Read lastOpened if available (backward compat: old files won't have it)
+    if (file.available() >= sizeof(uint32_t)) {
+      serialization::readPod(file, info.lastOpened);
+    }
     info.title = titleFromPath(info.path);
     decks.push_back(std::move(info));
   }
@@ -116,6 +116,7 @@ void AnkiDeckExplorerActivity::saveDeckIndex() {
     file.write(reinterpret_cast<const uint8_t*>(d.path.data()), pathLen);
     serialization::writePod(file, d.totalCards);
     serialization::writePod(file, d.dueCount);
+    serialization::writePod(file, d.lastOpened);
   }
   file.close();
 
@@ -163,7 +164,7 @@ void AnkiDeckExplorerActivity::scanDecks() {
   }
   dir.close();
 
-  sortByDueCount();
+  sortDecks();
   saveDeckIndex();
 
   // Update totalDue on session manager
@@ -182,10 +183,47 @@ void AnkiDeckExplorerActivity::scanDecks() {
   LOG_DBG("ANK", "Scan complete: %zu decks found", decks.size());
 }
 
-void AnkiDeckExplorerActivity::sortByDueCount() {
-  std::sort(decks.begin(), decks.end(), [](const DeckInfo& a, const DeckInfo& b) {
-    return a.dueCount > b.dueCount;
-  });
+void AnkiDeckExplorerActivity::sortDecks() {
+  switch (sortMode) {
+    case SortMode::DUE:
+      std::sort(decks.begin(), decks.end(),
+                [](const DeckInfo& a, const DeckInfo& b) { return a.dueCount > b.dueCount; });
+      break;
+    case SortMode::LAST_OPENED:
+      std::sort(decks.begin(), decks.end(),
+                [](const DeckInfo& a, const DeckInfo& b) { return a.lastOpened > b.lastOpened; });
+      break;
+    case SortMode::NAME:
+      std::sort(decks.begin(), decks.end(),
+                [](const DeckInfo& a, const DeckInfo& b) { return a.title < b.title; });
+      break;
+  }
+}
+
+void AnkiDeckExplorerActivity::refreshDueCounts() {
+  if (decks.empty()) return;
+
+  for (auto& d : decks) {
+    d.dueCount = static_cast<uint16_t>(AnkiDeck::countDueCards(d.path));
+  }
+
+  sortDecks();
+  saveDeckIndex();
+
+  uint16_t totalDue = 0;
+  for (const auto& d : decks) {
+    totalDue += d.dueCount;
+  }
+  ANKI_SESSION.setTotalDue(totalDue);
+}
+
+const char* AnkiDeckExplorerActivity::sortModeLabel() const {
+  switch (sortMode) {
+    case SortMode::DUE: return "Due";
+    case SortMode::LAST_OPENED: return "Last";
+    case SortMode::NAME: return "Name";
+  }
+  return "Due";
 }
 
 std::string AnkiDeckExplorerActivity::titleFromPath(const std::string& path) {
@@ -207,6 +245,8 @@ void AnkiDeckExplorerActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (!decks.empty() && selectorIndex >= 0 && selectorIndex < static_cast<int>(decks.size())) {
+      decks[selectorIndex].lastOpened = ANKI_SESSION.getSession();
+      saveDeckIndex();
       onOpenDeck(decks[selectorIndex].path);
     }
     return;
@@ -219,9 +259,15 @@ void AnkiDeckExplorerActivity::loop() {
     return;
   }
 
-  // Right button = Sort
+  // Right button = cycle sort mode
   if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-    sortByDueCount();
+    switch (sortMode) {
+      case SortMode::DUE: sortMode = SortMode::LAST_OPENED; break;
+      case SortMode::LAST_OPENED: sortMode = SortMode::NAME; break;
+      case SortMode::NAME: sortMode = SortMode::DUE; break;
+    }
+    sortDecks();
+    selectorIndex = 0;
     updateRequired = true;
     return;
   }
@@ -269,7 +315,9 @@ void AnkiDeckExplorerActivity::render() const {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title.c_str());
 
   // Button hints
-  const auto labels = mappedInput.mapLabels("< Back", "Open", "Scan", "Sort");
+  char sortLabel[16];
+  snprintf(sortLabel, sizeof(sortLabel), "%s", sortModeLabel());
+  const auto labels = mappedInput.mapLabels("< Back", "Open", "Scan", sortLabel);
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;

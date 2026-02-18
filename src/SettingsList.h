@@ -81,6 +81,10 @@ inline std::vector<SettingInfo> getSettingsList() {
       SettingInfo::Enum(StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeout,
                         {StrId::STR_MIN_1, StrId::STR_MIN_5, StrId::STR_MIN_10, StrId::STR_MIN_15, StrId::STR_MIN_30},
                         "sleepTimeout", StrId::STR_CAT_SYSTEM),
+      SettingInfo::Enum(StrId::STR_ANKI_DAILY_GOAL, &CrossPointSettings::ankiDailyGoal,
+                        {StrId::STR_GOAL_5, StrId::STR_GOAL_10, StrId::STR_GOAL_15, StrId::STR_GOAL_20,
+                         StrId::STR_GOAL_30, StrId::STR_GOAL_50},
+                        "ankiDailyGoal", StrId::STR_CAT_SYSTEM),
 
       // --- KOReader Sync (web-only, uses KOReaderCredentialStore) ---
       SettingInfo::DynamicString(
