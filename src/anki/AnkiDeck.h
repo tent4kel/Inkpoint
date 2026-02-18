@@ -37,6 +37,9 @@ class AnkiDeck {
   // Build due list for current global session (shuffle included)
   void buildDueList();
 
+  // Build study-ahead list: future cards sorted by nextReviewSession ascending
+  void buildStudyAheadList();
+
   // Get current card for review. Returns nullptr if no more due.
   FlashCard* currentCard();
 

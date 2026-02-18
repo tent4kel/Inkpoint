@@ -293,6 +293,17 @@ int CrossPointSettings::getRefreshFrequency() const {
   }
 }
 
+uint16_t CrossPointSettings::getDailyGoalValue() const {
+  switch (ankiDailyGoal) {
+    case GOAL_5: return 5;
+    case GOAL_10: default: return 10;
+    case GOAL_15: return 15;
+    case GOAL_20: return 20;
+    case GOAL_30: return 30;
+    case GOAL_50: return 50;
+  }
+}
+
 int CrossPointSettings::getReaderFontId() const {
   switch (fontFamily) {
     case BOOKERLY:
