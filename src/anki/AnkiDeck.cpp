@@ -110,6 +110,24 @@ void AnkiDeck::buildDueList() {
   LOG_DBG("ANK", "Built due list: %zu cards due at session %u", dueIndices.size(), session);
 }
 
+void AnkiDeck::buildStudyAheadList() {
+  const uint32_t session = ANKI_SESSION.getSession();
+  dueIndices.clear();
+  for (size_t i = 0; i < cards.size(); i++) {
+    if (cards[i].schedule.nextReviewSession > session) {
+      dueIndices.push_back(i);
+    }
+  }
+
+  // Sort by nextReviewSession ascending (soonest due first)
+  std::sort(dueIndices.begin(), dueIndices.end(), [this](size_t a, size_t b) {
+    return cards[a].schedule.nextReviewSession < cards[b].schedule.nextReviewSession;
+  });
+
+  duePosition = 0;
+  LOG_DBG("ANK", "Built study-ahead list: %zu future cards at session %u", dueIndices.size(), session);
+}
+
 FlashCard* AnkiDeck::currentCard() {
   if (duePosition >= dueIndices.size()) return nullptr;
   return &cards[dueIndices[duePosition]];
