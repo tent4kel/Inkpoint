@@ -76,6 +76,14 @@ void InstapaperActivity::onEnter() {
   loadCachedArticles();
   loadBookmarkCache();
 
+  // Sort immediately so the initial display matches the post-sync order
+  std::sort(displayList.begin(), displayList.end(), [](const DisplayBookmark& a, const DisplayBookmark& b) {
+    if (a.time == 0 && b.time == 0) return false;
+    if (a.time == 0) return false;
+    if (b.time == 0) return true;
+    return a.time > b.time;
+  });
+
   state = State::BROWSING;
   updateRequired = true;
 
@@ -264,17 +272,23 @@ void InstapaperActivity::backgroundSyncWork() {
       updateRequired = true;
       return;
     }
+    // Brief pause: routing stack needs a moment after DHCP before DNS/NTP work reliably
+    vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 
   // NTP sync (only if time not already set)
   syncStatus = "NTP...";
   updateRequired = true;
   if (time(nullptr) < 1000000000) {
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
     int ntpAttempts = 0;
-    while (time(nullptr) < 1000000000 && ntpAttempts < 100) {
+    while (time(nullptr) < 1000000000 && ntpAttempts < 200) {
       vTaskDelay(100 / portTICK_PERIOD_MS);
       ntpAttempts++;
+      if (ntpAttempts == 100) {
+        // Re-trigger SNTP after 10 s in case the first attempt stalled
+        configTime(0, 0, "time.google.com", "pool.ntp.org", "time.nist.gov");
+      }
     }
     if (time(nullptr) < 1000000000) {
       syncStatus = "NTP failed";
@@ -465,16 +479,22 @@ void InstapaperActivity::render() const {
     return;
   }
 
-  // Browsing state
-  const char* confirmLabel = "Open";
-  if (!displayList.empty() && selectorIndex >= 0 && selectorIndex < static_cast<int>(displayList.size())) {
-    confirmLabel = displayList[selectorIndex].downloaded ? "Open" : "Get";
-  }
+  // Browsing state — clamp selectorIndex defensively in case list changed on another task
+  const int sel = (!displayList.empty() && selectorIndex >= 0 && selectorIndex < static_cast<int>(displayList.size()))
+                      ? selectorIndex
+                      : 0;
+
+  const char* confirmLabel = displayList.empty() ? "Open" : (displayList[sel].downloaded ? "Open" : "Get");
   const auto labels = mappedInput.mapLabels("« Back", confirmLabel, "Get 5", "Delete");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
+
+  if (contentHeight <= 0) {
+    renderer.displayBuffer();
+    return;
+  }
 
   if (displayList.empty()) {
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20,
@@ -484,7 +504,7 @@ void InstapaperActivity::render() const {
   }
 
   GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, contentHeight}, displayList.size(), selectorIndex,
+      renderer, Rect{0, contentTop, pageWidth, contentHeight}, displayList.size(), sel,
       [this](int index) {
         const auto& bm = displayList[index];
         return bm.downloaded ? "[*] " + bm.title : bm.title;
@@ -516,7 +536,7 @@ void InstapaperActivity::openArticle(int index) {
   state = State::DOWNLOADING;
   statusMessage = bm.title;
   downloadCurrent = 0;
-  downloadTotal = 1;
+  downloadTotal = 0;  // callback fills in byte totals once the HTTP response starts
   updateRequired = true;
 
   // Ensure WiFi is connected
@@ -534,19 +554,24 @@ void InstapaperActivity::openArticle(int index) {
       updateRequired = true;
       return;
     }
+    delay(500);  // brief pause for routing stack
     if (time(nullptr) < 1000000000) {
-      configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+      configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
       int ntpAttempts = 0;
-      while (time(nullptr) < 1000000000 && ntpAttempts < 100) {
+      while (time(nullptr) < 1000000000 && ntpAttempts < 200) {
         delay(100);
         ntpAttempts++;
+        if (ntpAttempts == 100) configTime(0, 0, "time.google.com", "pool.ntp.org", "time.nist.gov");
       }
     }
   }
 
-  downloadSingleArticle(bm);
+  downloadSingleArticle(bm, [this](size_t cur, size_t total) {
+    downloadCurrent = static_cast<int>(cur);
+    downloadTotal = static_cast<int>(total);
+    updateRequired = true;
+  });
 
-  downloadCurrent = 1;
   state = State::BROWSING;
   updateRequired = true;
 
@@ -558,24 +583,37 @@ void InstapaperActivity::openArticle(int index) {
 }
 
 void InstapaperActivity::deleteArticle(int index) {
-  if (index < 0 || index >= static_cast<int>(displayList.size())) return;
+  xSemaphoreTake(renderingMutex, portMAX_DELAY);
+
+  if (index < 0 || index >= static_cast<int>(displayList.size())) {
+    xSemaphoreGive(renderingMutex);
+    return;
+  }
 
   auto& bm = displayList[index];
-  if (!bm.downloaded) return;
+  if (!bm.downloaded) {
+    xSemaphoreGive(renderingMutex);
+    return;
+  }
 
+  // Capture what we need before any structural list change
   std::string path = getArticlePath(bm);
-  Storage.remove(path.c_str());
-  LOG_DBG("INS", "Deleted: %s", path.c_str());
+  bool hasBookmarkId = !bm.bookmarkId.empty();
 
-  if (bm.bookmarkId.empty()) {
-    // Only known from SD, remove from list entirely
+  if (hasBookmarkId) {
+    bm.downloaded = false;
+  } else {
     displayList.erase(displayList.begin() + index);
     if (selectorIndex >= static_cast<int>(displayList.size()) && selectorIndex > 0) {
       selectorIndex--;
     }
-  } else {
-    bm.downloaded = false;
   }
+
+  xSemaphoreGive(renderingMutex);
+
+  // File I/O outside the mutex to keep lock time short
+  Storage.remove(path.c_str());
+  LOG_DBG("INS", "Deleted: %s", path.c_str());
 
   updateRequired = true;
 }
@@ -620,13 +658,14 @@ void InstapaperActivity::downloadNewest() {
       return;
     }
 
-    // NTP sync (only if time not already set)
+    delay(500);  // brief pause for routing stack
     if (time(nullptr) < 1000000000) {
-      configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+      configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
       int ntpAttempts = 0;
-      while (time(nullptr) < 1000000000 && ntpAttempts < 100) {
+      while (time(nullptr) < 1000000000 && ntpAttempts < 200) {
         delay(100);
         ntpAttempts++;
+        if (ntpAttempts == 100) configTime(0, 0, "time.google.com", "pool.ntp.org", "time.nist.gov");
       }
     }
   }
@@ -646,15 +685,24 @@ void InstapaperActivity::downloadNewest() {
   updateRequired = true;
 }
 
-void InstapaperActivity::downloadSingleArticle(DisplayBookmark& bm) {
+void InstapaperActivity::downloadSingleArticle(DisplayBookmark& bm, HttpDownloader::ProgressCallback progress) {
   std::string html;
-  if (!InstapaperClient::getArticleText(bm.bookmarkId, html)) {
+  if (!InstapaperClient::getArticleText(bm.bookmarkId, html, progress)) {
     LOG_ERR("INS", "Failed to get text for: %s", bm.title.c_str());
     return;
   }
 
+  // getArticleText() already caps at 64 KB via postUrl(maxBytes). This guard is a safety net
+  // in case the cap is ever changed — keeps HTML + markdown peak well under the 380 KB ceiling.
+  constexpr size_t MAX_HTML = 32768;  // 32 KB — matches postUrl cap in getArticleText()
+  if (html.size() > MAX_HTML) {
+    LOG_INF("INS", "Article HTML %zu bytes, truncating to %zu to avoid OOM", html.size(), MAX_HTML);
+    html.resize(MAX_HTML);
+  }
+
   std::string markdown = HtmlToMarkdown::convert(html);
-  markdown = "# " + bm.title + "\n\n" + markdown;
+  // Free html immediately — no need to hold both in memory while writing
+  { std::string tmp; tmp.swap(html); }
 
   const auto& folder = INSTAPAPER_STORE.getDownloadFolder();
   Storage.mkdir(folder.c_str());
@@ -671,14 +719,18 @@ void InstapaperActivity::downloadSingleArticle(DisplayBookmark& bm) {
     return;
   }
 
+  // Write header and body separately to avoid building a third large concatenated string
+  std::string header = "# ";
+  header += bm.title;
+  header += "\n\n";
+  file.write(reinterpret_cast<const uint8_t*>(header.data()), header.size());
   file.write(reinterpret_cast<const uint8_t*>(markdown.data()), markdown.size());
   file.close();
 
   bm.downloaded = true;
-  // Store filename so we can find the file later
   size_t lastSlash = path.rfind('/');
   bm.filename = (lastSlash != std::string::npos) ? path.substr(lastSlash + 1) : path;
-  LOG_DBG("INS", "Saved article: %s", path.c_str());
+  LOG_DBG("INS", "Saved article: %s (%zu bytes)", path.c_str(), header.size() + markdown.size());
 }
 
 std::string InstapaperActivity::getArticlePath(const DisplayBookmark& bm) const {
