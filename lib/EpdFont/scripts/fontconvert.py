@@ -16,8 +16,8 @@ parser.add_argument("size", type=int, help="font size to use.")
 parser.add_argument("fontstack", action="store", nargs='+', help="list of font files, ordered by descending priority.")
 parser.add_argument("--2bit", dest="is2Bit", action="store_true", help="generate 2-bit greyscale bitmap instead of 1-bit black and white.")
 parser.add_argument("--additional-intervals", dest="additional_intervals", action="append", help="Additional code point intervals to export as min,max. This argument can be repeated.")
-parser.add_argument("--kern-scope", dest="kern_scope", choices=["all", "latin", "english"], default="all", help="Restrict kerning extraction to a character subset. 'english' limits to Basic Latin + Latin-1 Supplement + typographic punctuation. 'latin' extends that with Latin Extended-A. Default: all.")
-parser.add_argument("--ligature-scope", dest="ligature_scope", choices=["all", "latin", "english"], default="all", help="Restrict ligature extraction to a character subset. 'english' limits to Basic Latin + Latin-1 Supplement + typographic punctuation. 'latin' extends that with Latin Extended-A. Default: all.")
+parser.add_argument("--kern-scope", dest="kern_scope", choices=["all", "latin", "western"], default="all", help="Restrict kerning extraction to a character subset. 'western' limits to Basic Latin + Latin-1 Supplement + typographic punctuation. 'latin' extends that with Latin Extended-A/B. Default: all.")
+parser.add_argument("--ligature-scope", dest="ligature_scope", choices=["all", "latin", "western"], default="all", help="Restrict ligature extraction to a character subset. 'western' limits to Basic Latin + Latin-1 Supplement + typographic punctuation. 'latin' extends that with Latin Extended-A/B. Default: all.")
 parser.add_argument("--compress", dest="compress", action="store_true", help="Compress glyph bitmaps using DEFLATE with group-based compression.")
 args = parser.parse_args()
 
@@ -288,7 +288,7 @@ all_codepoints = [g.code_point for g in glyph_props]
 kernable_codepoints = set(cp for cp in all_codepoints
                           if not (COMBINING_MARKS_START <= cp <= COMBINING_MARKS_END))
 
-KERN_ENGLISH_CODEPOINTS = (
+KERN_WESTERN_CODEPOINTS = (
     frozenset(range(0x0020, 0x007F)) |  # Basic Latin (ASCII printable)
     frozenset(range(0x00A0, 0x0100)) |  # Latin-1 Supplement (Western European accented chars)
     frozenset({0x2013, 0x2014,          # en dash, em dash
@@ -300,13 +300,13 @@ KERN_ENGLISH_CODEPOINTS = (
 )
 
 KERN_LATIN_CODEPOINTS = (
-    KERN_ENGLISH_CODEPOINTS |
+    KERN_WESTERN_CODEPOINTS |
     frozenset(range(0x0100, 0x0180))    # Latin Extended-A (Eastern European: Polish, Czech, etc.)
 )
 
-if args.kern_scope == 'english':
-    kernable_codepoints &= KERN_ENGLISH_CODEPOINTS
-    print(f"kerning: scope limited to 'english' ({len(kernable_codepoints)} kernable codepoints)", file=sys.stderr)
+if args.kern_scope == 'western':
+    kernable_codepoints &= KERN_WESTERN_CODEPOINTS
+    print(f"kerning: scope limited to 'western' ({len(kernable_codepoints)} kernable codepoints)", file=sys.stderr)
 elif args.kern_scope == 'latin':
     kernable_codepoints &= KERN_LATIN_CODEPOINTS
     print(f"kerning: scope limited to 'latin' ({len(kernable_codepoints)} kernable codepoints)", file=sys.stderr)
@@ -448,7 +448,7 @@ print(f"kerning: {len(kern_pairs)} pairs extracted", file=sys.stderr)
 
 all_codepoints_set = set(all_codepoints)
 
-LIGATURE_ENGLISH_CODEPOINTS = (
+LIGATURE_WESTERN_CODEPOINTS = (
     frozenset(range(0x0020, 0x007F)) |  # Basic Latin (ASCII printable)
     frozenset(range(0x00A0, 0x0100)) |  # Latin-1 Supplement (Western European accented chars)
     frozenset(range(0xFB00, 0xFB07)) |  # Alphabetic Presentation Forms (ligature codepoints)
@@ -461,7 +461,7 @@ LIGATURE_ENGLISH_CODEPOINTS = (
 )
 
 LIGATURE_LATIN_CODEPOINTS = (
-    LIGATURE_ENGLISH_CODEPOINTS |
+    LIGATURE_WESTERN_CODEPOINTS |
     frozenset(range(0x0100, 0x0180))    # Latin Extended-A (Eastern European: Polish, Czech, etc.)
 )
 
@@ -600,9 +600,9 @@ def extract_ligatures_fonttools(font_path, codepoints):
 ligature_codepoints = set(cp for cp in all_codepoints
                           if not (COMBINING_MARKS_START <= cp <= COMBINING_MARKS_END))
 
-if args.ligature_scope == 'english':
-    ligature_codepoints &= LIGATURE_ENGLISH_CODEPOINTS
-    print(f"ligatures: scope limited to 'english' ({len(ligature_codepoints)} codepoints)", file=sys.stderr)
+if args.ligature_scope == 'western':
+    ligature_codepoints &= LIGATURE_WESTERN_CODEPOINTS
+    print(f"ligatures: scope limited to 'western' ({len(ligature_codepoints)} codepoints)", file=sys.stderr)
 elif args.ligature_scope == 'latin':
     ligature_codepoints &= LIGATURE_LATIN_CODEPOINTS
     print(f"ligatures: scope limited to 'latin' ({len(ligature_codepoints)} codepoints)", file=sys.stderr)
