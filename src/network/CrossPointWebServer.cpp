@@ -332,7 +332,7 @@ void CrossPointWebServer::handleStatus() const {
   server->send(200, "application/json", json);
 }
 
-void CrossPointWebServer::scanFiles(const char* path, const std::function<void(FileInfo)>& callback) const {
+void CrossPointWebServer::scanFiles(const char* path, const std::function<void(FileInfo)>& callback, bool showHidden) const {
   FsFile root = Storage.open(path);
   if (!root) {
     LOG_DBG("WEB", "Failed to open directory: %s", path);
@@ -353,15 +353,16 @@ void CrossPointWebServer::scanFiles(const char* path, const std::function<void(F
     file.getName(name, sizeof(name));
     auto fileName = String(name);
 
-    // Skip hidden items (starting with ".")
-    bool shouldHide = fileName.startsWith(".");
-
-    // Check against explicitly hidden items list
-    if (!shouldHide) {
-      for (size_t i = 0; i < HIDDEN_ITEMS_COUNT; i++) {
-        if (fileName.equals(HIDDEN_ITEMS[i])) {
-          shouldHide = true;
-          break;
+    // Skip hidden items unless showHidden is true
+    bool shouldHide = false;
+    if (!showHidden) {
+      shouldHide = fileName.startsWith(".");
+      if (!shouldHide) {
+        for (size_t i = 0; i < HIDDEN_ITEMS_COUNT; i++) {
+          if (fileName.equals(HIDDEN_ITEMS[i])) {
+            shouldHide = true;
+            break;
+          }
         }
       }
     }
@@ -411,6 +412,8 @@ void CrossPointWebServer::handleFileListData() const {
     }
   }
 
+  bool showHidden = server->hasArg("showHidden") && server->arg("showHidden") == "1";
+
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
   server->sendContent("[");
@@ -439,7 +442,7 @@ void CrossPointWebServer::handleFileListData() const {
       seenFirst = true;
     }
     server->sendContent(output);
-  });
+  }, showHidden);
   server->sendContent("]");
   // End of streamed response, empty chunk to signal client
   server->sendContent("");
