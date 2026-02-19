@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CrossPoint - Deck Editor</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f0f2f5;
+      color: #333;
+    }
+    .nav-links { margin: 0 0 16px; }
+    .nav-links a {
+      display: inline-block;
+      padding: 8px 16px;
+      background: #3498db;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      margin-right: 8px;
+      font-size: 0.9em;
+    }
+    .nav-links a:hover { background: #2980b9; }
+    .message {
+      padding: 12px;
+      border-radius: 4px;
+      margin: 10px 0;
+      display: none;
+    }
+    .message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .message.error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+    /* ── Save/discard dialog ──────────────────────────────────────── */
+    #dirty-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 400;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #dirty-overlay[hidden] { display: none; }
+    #dirty-dialog {
+      background: white;
+      border-radius: 14px;
+      padding: 24px 20px 20px;
+      max-width: 320px;
+      width: 90%;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    }
+    #dirty-dialog h3 { margin: 0 0 6px; font-size: 1.1em; color: #2c3e50; }
+    #dirty-dialog p  { margin: 0 0 18px; font-size: 0.9em; color: #7f8c8d; }
+    .dirty-btns { display: flex; gap: 8px; }
+    .dirty-btns button {
+      flex: 1;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.88em;
+      font-weight: 500;
+      font-family: inherit;
+    }
+    .dirty-cancel  { background: #ecf0f1; color: #555; }
+    .dirty-discard { background: #e74c3c; color: white; }
+    .dirty-save    { background: #3498db; color: white; }
+
+    /* ── Deck picker ──────────────────────────────────────────────── */
+    h1 {
+      color: #2c3e50;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    .deck-item {
+      padding: 12px 16px;
+      background: white;
+      border-radius: 8px;
+      margin: 8px 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .deck-item:hover { background: #ecf0f1; }
+    .deck-title { font-weight: 500; color: #2c3e50; }
+    .empty-msg {
+      text-align: center;
+      color: #95a5a6;
+      padding: 40px 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    /* ── Card list view ───────────────────────────────────────────── */
+
+    /* ── Large collapsing deck title ──────────────────────────────── */
+    #deck-title-large {
+      font-size: 2em;
+      font-weight: 700;
+      color: #2c3e50;
+      margin: 0 0 4px;
+      line-height: 1.2;
+      transform-origin: top left;
+      will-change: transform, opacity;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Sticky 2×2 action grid ───────────────────────────────────── */
+    .action-grid {
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 10px 0 14px;
+      background: linear-gradient(to bottom, #f0f2f5 70%, transparent);
+    }
+
+    /* ── Cards ────────────────────────────────────────────────────── */
+    .cards-container { display: flex; flex-direction: column; gap: 10px; }
+
+    .card-wrap {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+    }
+    .action-dup, .action-del {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 84px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+      color: white;
+      font-size: 1.5em;
+      line-height: 1;
+      user-select: none;
+    }
+    .action-dup { left: 0;  background: #27ae60; }
+    .action-del { right: 0; background: #e74c3c; }
+    .action-dup span, .action-del span {
+      font-size: 0.45em;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .card-face {
+      display: flex;
+      background: white;
+      border-radius: 12px;
+      position: relative;
+      z-index: 1;
+      min-height: 64px;
+      will-change: transform;
+    }
+    .card-half {
+      flex: 1;
+      padding: 12px 14px;
+      min-width: 0;
+      cursor: text;
+    }
+    .card-half + .card-half { border-left: 1px solid #e5e5e5; }
+
+    /* ── Markdown preview ─────────────────────────────────────────── */
+    .card-preview {
+      text-align: justify;
+      font-size: 0.95em;
+      line-height: 1.55;
+      color: #2c3e50;
+      min-height: 24px;
+      user-select: none;
+    }
+    .card-preview p           { margin: 0 0 0.45em; }
+    .card-preview p:last-child { margin-bottom: 0; }
+    .card-preview hr { border: none; border-top: 1px solid #ddd; margin: 6px 0; }
+    .card-preview strong      { font-weight: 700; }
+    .card-preview em          { font-style: italic; }
+    .card-preview code {
+      background: #f0f0f0;
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.88em;
+      color: #c0392b;
+    }
+    .card-preview .ph { color: #ccc; }
+    .card-preview mark {
+      background: #fff3a3;
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+
+    /* ── Raw textarea (editing) ───────────────────────────────────── */
+    /*
+     * iOS Safari form-assistant hack:
+     * The toolbar's prev/next arrows skip elements with display:none or
+     * zero bounding-box. We keep textareas display:block at all times but
+     * visually hidden (opacity:0, height:0 as CSS baseline). renderCards()
+     * calls autoResize() *after* DOM insertion so scrollHeight is non-zero,
+     * giving each textarea a real pixel height that Safari can discover.
+     * The focus handler below then enters editing mode on navigation.
+     */
+    .card-edit {
+      display: block;
+      height: 0;
+      min-height: 0;
+      opacity: 0;
+      width: 100%;
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: inherit;
+      font-size: 0.95em;
+      line-height: 1.55;
+      background: transparent;
+      padding: 0;
+      overflow: hidden;
+      color: #2c3e50;
+    }
+    .card-half.editing .card-preview { display: none; }
+    .card-half.editing .card-edit    { height: auto; min-height: 24px; opacity: 1; }
+
+    /* ── Action buttons ───────────────────────────────────────────── */
+    .bar-btn {
+      padding: 11px 14px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+      border: none;
+      cursor: pointer;
+      font-size: 0.88em;
+      font-weight: 500;
+      font-family: inherit;
+      color: white;
+      white-space: nowrap;
+      width: 100%;
+    }
+    .bar-btn:active   { opacity: 0.82; }
+    .bar-btn:disabled { background: #95a5a6 !important; cursor: not-allowed; }
+    .bar-back { background: #7f8c8d; }
+    .bar-back:hover { background: #6c7a7d; }
+    .bar-save { background: #3498db; }
+    .bar-save:hover { background: #2980b9; }
+    .bar-add  { background: #27ae60; }
+    .bar-add:hover  { background: #219a52; }
+
+    .bar-search-wrap { position: relative; }
+    .bar-search-wrap svg {
+      position: absolute;
+      left: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      color: #aaa;
+    }
+    #search-input {
+      width: 100%;
+      padding: 11px 11px 11px 34px;
+      border-radius: 12px;
+      border: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+      background: white;
+      font-size: 0.88em;
+      font-family: inherit;
+      color: #2c3e50;
+    }
+    #search-input::placeholder { color: #bbb; }
+    #search-input:focus { outline: none; box-shadow: 0 2px 8px rgba(52,152,219,0.35); }
+
+    /* ── Deck picker edit button ──────────────────────────────────── */
+    .deck-edit-btn {
+      font-size: 1.05em;
+      color: #ccc;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .deck-edit-btn:hover { color: #7f8c8d; background: #e8eaed; }
+
+    /* ── Hotkey hints ─────────────────────────────────────────────── */
+    #hotkey-hints {
+      text-align: center;
+      color: #ccc;
+      font-size: 0.75em;
+      letter-spacing: 0.03em;
+      padding: 18px 0 70px;
+      user-select: none;
+      line-height: 2;
+    }
+    #hotkey-hints .fmt {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.95em;
+    }
+
+    /* ── Raw CSV view ─────────────────────────────────────────────── */
+    #raw-view { margin-top: 4px; }
+    #raw-view textarea {
+      width: 100%;
+      min-height: 420px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.8em;
+      line-height: 1.55;
+      color: #2c3e50;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 14px;
+      resize: vertical;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    #raw-view textarea:focus { outline: none; border-color: #3498db; }
+    #raw-view[hidden] { display: none; }
+
+    /* ── Action grid raw-mode swap ────────────────────────────────────── */
+    .action-grid .raw-only  { display: none; }
+    .action-grid.raw-mode .raw-hidden { display: none; }
+    .action-grid.raw-mode .raw-only   { display: block; }
+
+    /* ── Explicit hidden overrides (prevent display:flex/block winning) ─ */
+    #cards-container[hidden],
+    #list-empty[hidden],
+    #no-results[hidden]     { display: none; }
+
+    /* ── Bottom fade overlay ──────────────────────────────────────── */
+    #bottom-fade {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 64px;
+      background: linear-gradient(to bottom, transparent, #f0f2f5);
+      pointer-events: none;
+      z-index: 150;
+    }
+    #bottom-fade[hidden] { display: none; }
+
+    /* ── Misc ─────────────────────────────────────────────────────── */
+    .loader {
+      display: inline-block;
+      width: 20px; height: 20px;
+      border: 3px solid #aaa;
+      border-bottom-color: transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 500px) {
+      body { padding: 10px; }
+      .action-grid { gap: 6px; }
+      .bar-btn { padding: 10px 10px; font-size: 0.82em; }
+      #search-input { padding: 10px 10px 10px 30px; font-size: 0.82em; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Save/discard dialog ────────────────────────────────────────────── -->
+<div id="dirty-overlay" hidden>
+  <div id="dirty-dialog">
+    <h3>Unsaved changes</h3>
+    <p>Save before leaving, or discard your changes?</p>
+    <div class="dirty-btns">
+      <button class="dirty-cancel"  id="dirty-cancel">Cancel</button>
+      <button class="dirty-discard" id="dirty-discard">Discard</button>
+      <button class="dirty-save"    id="dirty-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── View: Deck Picker ─────────────────────────────────────────────── -->
+<div id="view-picker">
+  <h1>Anki Deck Editor</h1>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/files">Files</a>
+    <a href="/settings">Settings</a>
+  </div>
+  <div id="picker-banner" class="message"></div>
+  <div style="margin:12px 0;">
+    <button onclick="newDeck()" style="padding:8px 16px;background:#27ae60;color:white;border:none;border-radius:4px;cursor:pointer;font-size:0.9em;font-family:inherit;">+ New Deck</button>
+  </div>
+  <div id="deck-list"><span class="loader"></span> Loading&hellip;</div>
+</div>
+
+<!-- ── View: Card List ───────────────────────────────────────────────── -->
+<div id="view-list" hidden>
+  <div id="deck-title-large"></div>
+  <div class="action-grid" id="action-grid">
+    <button class="bar-btn bar-back raw-hidden" id="back-btn">&#8592; Back</button>
+    <div class="bar-search-wrap raw-hidden">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5"
+           stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input id="search-input" type="search" placeholder="Search cards&hellip;" autocomplete="off" />
+    </div>
+    <button class="bar-btn bar-add  raw-hidden" id="add-btn">+ Card</button>
+    <button class="bar-btn bar-save raw-hidden" id="save-btn">Save</button>
+    <button class="bar-btn bar-back raw-only" id="raw-grid-back">&#8592; Cards</button>
+    <button class="bar-btn bar-save raw-only" id="raw-grid-copy">&#128203; Copy all</button>
+  </div>
+  <div id="list-banner" class="message"></div>
+  <div id="cards-container" class="cards-container"></div>
+  <div id="list-empty" class="empty-msg" hidden>
+    No cards yet &mdash; click &ldquo;+ Card&rdquo; to get started.
+  </div>
+  <div id="no-results" class="empty-msg" hidden>
+    No cards match your search.
+  </div>
+  <div id="raw-view" hidden>
+    <textarea id="raw-textarea" spellcheck="false"></textarea>
+  </div>
+
+  <div id="hotkey-hints">
+    <div class="fmt">**bold** &nbsp; *italic* &nbsp; ***b+i*** &nbsp; `code` &nbsp; # heading &nbsp; - list &nbsp; &gt; quote &nbsp; ---</div>
+    <div class="fmt">blank line = paragraph &nbsp;&nbsp; &ldquo;two spaces&rdquo;+&crarr; = line break</div>
+    <div><span id="hint-mods"></span><a id="raw-toggle" href="#" style="color:#ccc;text-decoration:none;">&#9998; raw CSV</a></div>
+  </div>
+</div>
+
+<div id="bottom-fade" hidden></div>
+
+<!-- ── View: Card Editor (Phase 2 stub) ─────────────────────────────── -->
+<div id="view-editor" hidden>
+  <h2>Edit Card</h2>
+  <label>Front</label>
+  <textarea id="editor-front" rows="6" style="width:100%;"></textarea>
+  <div id="preview-front"></div>
+  <label>Back</label>
+  <textarea id="editor-back" rows="6" style="width:100%;"></textarea>
+  <div id="preview-back"></div>
+</div>
+
+
+<script>
+  // ── State ────────────────────────────────────────────────────────────────
+  var currentPath = null;
+  var headers     = [];
+  var rows        = [];
+  var searchQuery = '';
+  var isDirty     = false;
+  var isRawMode   = false;
+
+  // ── Zoom reset ────────────────────────────────────────────────────────────
+  // iOS Safari zooms in when a textarea is focused. On blur we snap back to
+  // scale 1 by briefly enabling maximum-scale=1 (forces reflow), then removing it.
+  var _vpMeta = document.querySelector('meta[name=viewport]');
+  function resetZoom() {
+    if (!_vpMeta) return;
+    _vpMeta.content = 'width=device-width, initial-scale=1, maximum-scale=1';
+    setTimeout(function() { _vpMeta.content = 'width=device-width, initial-scale=1'; }, 50);
+  }
+
+  // ── Collapsing title on scroll ────────────────────────────────────────────
+  var titleEl = document.getElementById('deck-title-large');
+  var TITLE_COLLAPSE_PX = 80;
+
+  function updateTitleScale() {
+    if (document.getElementById('view-list').hidden) return;
+    var t = Math.min(1, Math.max(0, window.scrollY / TITLE_COLLAPSE_PX));
+    titleEl.style.transform = 'scale(' + (1 - t * 0.38) + ')';
+    titleEl.style.opacity   = (1 - t).toString();
+  }
+
+  window.addEventListener('scroll', updateTitleScale, { passive: true });
+
+  // ── Minimal Markdown renderer ─────────────────────────────────────────────
+  function md(src, highlight) {
+    if (!src || !src.trim()) return '<span class="ph">&#8212;</span>';
+    var s = src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    var codes = [];
+    s = s.replace(/`([^`\n]+)`/g, function(_,c){ codes.push(c); return '\x01'+(codes.length-1)+'\x01'; });
+    s = s.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    s = s.replace(/___([^_\n]+)___/g,      '<strong><em>$1</em></strong>');
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__([^_\n]+)__/g,      '<strong>$1</strong>');
+    s = s.replace(/\*([^*\n]+)\*/g,      '<em>$1</em>');
+    s = s.replace(/_([^_\n]+)_/g,        '<em>$1</em>');
+    s = s.replace(/\x01(\d+)\x01/g, function(_,i){ return '<code>'+codes[+i]+'</code>'; });
+    s = s.split(/\n{2,}/).map(function(p){
+      p = p.trim();
+      if (!p) return '';
+      if (/^[-*_]{3,}$/.test(p)) return '<hr>';
+      return '<p>'+p.replace(/  \n/g,'<br>').replace(/\n/g,' ')+'</p>';
+    }).join('');
+    if (highlight) {
+      var q = highlight.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      s = s.replace(new RegExp('(?![^<>]*>)('+q+')', 'gi'), '<mark>$1</mark>');
+    }
+    return s;
+  }
+
+  // ── RFC 4180 CSV ─────────────────────────────────────────────────────────
+  function parseCSV(text) {
+    var result=[],row=[],field='',inQ=false,i=0,c;
+    for(;i<text.length;i++){
+      c=text[i];
+      if(inQ){
+        if(c==='"'&&text[i+1]==='"'){field+='"';i++;}
+        else if(c==='"'){inQ=false;}
+        else{field+=c;}
+      }else{
+        if(c==='"'){inQ=true;}
+        else if(c===','){row.push(field);field='';}
+        else if(c==='\r'&&text[i+1]==='\n'){row.push(field);result.push(row);row=[];field='';i++;}
+        else if(c==='\n'){row.push(field);result.push(row);row=[];field='';}
+        else{field+=c;}
+      }
+    }
+    if(field!==''||row.length>0){
+      row.push(field);
+      if(row.some(function(f){return f!=='';})) result.push(row);
+    }
+    return result.length ? {headers:result[0],rows:result.slice(1)} : {headers:[],rows:[]};
+  }
+  function csvField(s){s=String(s);return/[,"\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+  function serializeCSV(hdrs,dataRows){
+    var lines=[hdrs.map(csvField).join(',')];
+    for(var i=0;i<dataRows.length;i++) lines.push(dataRows[i].map(csvField).join(','));
+    return lines.join('\r\n')+'\r\n';
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+  // Detect how many * stars currently wrap the selection (max 3).
+  // Returns { inner, stars, outerStart, outerEnd } where outer* covers the full
+  // decorated region (markers + content) that will be replaced.
+  //
+  // Star count encodes decoration: 0=plain, 1=italic, 2=bold, 3=bold+italic.
+  // Two cases accepted:
+  //   A) Selection includes markers ("**hello**" selected)
+  //   B) Markers sit just outside selection ("hello" selected inside "**hello**")
+  function detectStarWrap(val, start, end) {
+    var sel = val.slice(start, end);
+
+    // Case A: count symmetric leading/trailing stars inside selection
+    var lead = 0, trail = 0;
+    while (lead < 3 && sel[lead] === '*') lead++;
+    while (trail < 3 && trail < sel.length - lead && sel[sel.length - 1 - trail] === '*') trail++;
+    var inside = Math.min(lead, trail);
+    if (inside > 0) {
+      return { inner: sel.slice(inside, sel.length - inside),
+               stars: inside, outerStart: start, outerEnd: end };
+    }
+
+    // Case B: count consecutive stars immediately outside the selection
+    var before = 0, after = 0;
+    while (before < 3 && val[start - 1 - before] === '*') before++;
+    while (after  < 3 && val[end + after]         === '*') after++;
+    var outside = Math.min(before, after);
+    return { inner: sel, stars: outside,
+             outerStart: start - outside, outerEnd: end + outside };
+  }
+
+  // Toggle bold or italic on the current textarea selection, respecting existing
+  // decoration so that **bold** + italic yields ***bold+italic*** and vice-versa.
+  function toggleDecoration(ta, type) {
+    var start = ta.selectionStart;
+    var end   = ta.selectionEnd;
+    var val   = ta.value;
+
+    var info     = detectStarWrap(val, start, end);
+    var hasBold  = info.stars >= 2;
+    var hasItal  = info.stars === 1 || info.stars === 3;
+
+    if (type === 'bold')   hasBold = !hasBold;
+    if (type === 'italic') hasItal = !hasItal;
+
+    // Star count: bold=2, italic=1, both=3, neither=0
+    var newStars = (hasBold ? 2 : 0) + (hasItal ? 1 : 0);
+    var marker   = '*'.repeat(newStars);
+
+    ta.value = val.slice(0, info.outerStart) + marker + info.inner + marker + val.slice(info.outerEnd);
+    ta.setSelectionRange(info.outerStart + newStars,
+                         info.outerStart + newStars + info.inner.length);
+    ta.dispatchEvent(new Event('input'));
+    autoResize(ta);
+  }
+
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select(); ta.setSelectionRange(0, 999999);
+    try { document.execCommand('copy'); } catch(e) {}
+    document.body.removeChild(ta);
+  }
+
+  function copyText(text, btn) {
+    var flash = function() {
+      var old = btn.textContent;
+      btn.textContent = '\u2713 Copied!';
+      setTimeout(function() { btn.textContent = old; }, 1500);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(flash).catch(function() { legacyCopy(text); flash(); });
+    } else {
+      legacyCopy(text); flash();
+    }
+  }
+  function showBanner(id,msg,err){
+    var el=document.getElementById(id);
+    el.textContent=msg; el.className='message '+(err?'error':'success'); el.style.display='block';
+    setTimeout(function(){el.style.display='none';},3000);
+  }
+  function autoResize(ta){ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';}
+
+  // ── Search ───────────────────────────────────────────────────────────────
+  function matchesQuery(row,q){
+    return !q || row[0].toLowerCase().indexOf(q)!==-1 || row[1].toLowerCase().indexOf(q)!==-1;
+  }
+  document.getElementById('search-input').addEventListener('input',function(){
+    searchQuery=this.value.trim().toLowerCase();
+    renderCards();
+  });
+
+  // ── Save/discard dialog ───────────────────────────────────────────────────
+  var _dirtyCb = null;
+
+  function showDirtyDialog(cb) {
+    _dirtyCb = cb;
+    document.getElementById('dirty-overlay').hidden = false;
+  }
+  function hideDirtyDialog() {
+    document.getElementById('dirty-overlay').hidden = true;
+    _dirtyCb = null;
+  }
+
+  document.getElementById('dirty-cancel').addEventListener('click', function() {
+    var cb = _dirtyCb; hideDirtyDialog(); if (cb) cb('cancel');
+  });
+  document.getElementById('dirty-discard').addEventListener('click', function() {
+    var cb = _dirtyCb; hideDirtyDialog(); isDirty = false; if (cb) cb('discard');
+  });
+  document.getElementById('dirty-save').addEventListener('click', function() {
+    var cb = _dirtyCb; hideDirtyDialog(); if (cb) cb('save');
+  });
+
+  // ── SPA history ───────────────────────────────────────────────────────────
+  // We tag each history entry with the view name so popstate can re-hydrate.
+  // Back button fires history.back(), which triggers popstate — one code path
+  // for both browser back and our custom button.
+  history.replaceState({view: 'picker'}, '');
+
+  window.addEventListener('popstate', function(e) {
+    var state = e.state || {view: 'picker'};
+    if (state.view === 'list') {
+      // Forward navigation (browser forward button): re-open deck without re-pushing.
+      openDeck(state.path, false);
+      return;
+    }
+    // Navigating toward picker.
+    if (isDirty) {
+      // Re-push the list state so we stay visually on the list while the dialog shows.
+      // After re-push the stack looks like: [picker, list(new)] with cursor at list(new).
+      // Confirming discard/save calls history.back() again — now isDirty is false so we proceed.
+      history.pushState({view: 'list', path: currentPath}, '');
+      showDirtyDialog(function(action) {
+        if (action === 'save') {
+          saveCards(function() { history.back(); });
+        } else if (action === 'discard') {
+          history.back();  // isDirty already cleared by dirty-discard handler
+        }
+        // cancel: do nothing — we're at the re-pushed list state ✓
+      });
+    } else {
+      doShowPicker();
+    }
+  });
+
+  // Back button → browser back → popstate handles the rest.
+  document.getElementById('back-btn').addEventListener('click', function() {
+    history.back();
+  });
+
+  document.getElementById('save-btn').addEventListener('click', function() { saveCards(); });
+  document.getElementById('add-btn').addEventListener('click',  addCard);
+
+  // ── Swipe ────────────────────────────────────────────────────────────────
+  var activeDrag = null;
+  document.addEventListener('mousemove', function(e){ if(activeDrag) activeDrag.onMove(e.clientX,e.clientY); });
+  document.addEventListener('mouseup',   function(e){ if(activeDrag){ activeDrag.onEnd(e.clientX); activeDrag=null; } });
+
+  function closeOtherCards(exceptWrap){
+    document.querySelectorAll('.card-wrap').forEach(function(w){
+      if(w!==exceptWrap && w._offset!==0){
+        var f=w.querySelector('.card-face');
+        f.style.transition='transform 0.2s ease'; f.style.transform='translateX(0)'; w._offset=0;
+      }
+    });
+  }
+
+  function setupSwipe(wrap, onDup, onDel){
+    var face=wrap.querySelector('.card-face'), REVEAL=84, SNAP=40;
+    wrap._offset=0; wrap._suppressClick=false;
+    var sx=0,sy=0,locked=false,dragging=false;
+
+    function isEditing(){ return !!wrap.querySelector('.card-half.editing'); }
+
+    function setX(x,anim){ face.style.transition=anim?'transform 0.2s ease':'none'; face.style.transform='translateX('+x+'px)'; }
+    function snap(x){ setX(x,true); wrap._offset=x; }
+    function start(x,y){ sx=x; sy=y; locked=false; dragging=true; wrap._suppressClick=false; face.style.transition='none'; }
+    function move(x,y){
+      if(!dragging) return;
+      var dx=x-sx, dy=y-sy;
+      if(!locked){
+        if(Math.abs(dx)<4&&Math.abs(dy)<4) return;
+        if(Math.abs(dy)>=Math.abs(dx)){ dragging=false; return; }
+        locked=true; wrap._suppressClick=true; closeOtherCards(wrap);
+      }
+      setX(Math.max(-REVEAL,Math.min(REVEAL,wrap._offset+dx)),false);
+    }
+    function end(x){
+      if(!dragging) return; dragging=false;
+      var nx=Math.max(-REVEAL,Math.min(REVEAL,wrap._offset+(x-sx)));
+      if(nx>SNAP) snap(REVEAL); else if(nx<-SNAP) snap(-REVEAL); else snap(0);
+    }
+
+    // Touch — blocked while a half is in edit mode
+    wrap.addEventListener('touchstart', function(e){
+      if(isEditing()) return;
+      start(e.touches[0].clientX, e.touches[0].clientY);
+    }, {passive:true});
+    wrap.addEventListener('touchmove', function(e){
+      if(!dragging) return;
+      var dx=e.touches[0].clientX-sx, dy=e.touches[0].clientY-sy;
+      if(!locked){
+        if(Math.abs(dx)<4&&Math.abs(dy)<4) return;
+        if(Math.abs(dy)>=Math.abs(dx)){ dragging=false; return; }
+        locked=true; wrap._suppressClick=true; closeOtherCards(wrap);
+      }
+      e.preventDefault();
+      setX(Math.max(-REVEAL,Math.min(REVEAL,wrap._offset+dx)),false);
+    }, {passive:false});
+    wrap.addEventListener('touchend', function(e){ end(e.changedTouches[0].clientX); });
+
+    // Mouse — blocked while a half is in edit mode, and never on textareas
+    face.addEventListener('mousedown', function(e){
+      if(e.target.tagName==='TEXTAREA') return;
+      if(isEditing()) return;
+      start(e.clientX, e.clientY);
+      activeDrag={onMove:move, onEnd:end};
+    });
+
+    wrap.querySelector('.action-dup').addEventListener('click', function(){ snap(0); onDup(); });
+    wrap.querySelector('.action-del').addEventListener('click', function(){ onDel(); });
+  }
+
+  // ── View switching ────────────────────────────────────────────────────────
+  function showView(v){
+    ['view-picker','view-list','view-editor'].forEach(function(id){
+      document.getElementById(id).hidden = (id!==v);
+    });
+    document.getElementById('bottom-fade').hidden = (v!=='view-list');
+    if(v==='view-list'){
+      window.scrollTo(0,0);
+      updateTitleScale();
+    }
+  }
+
+  function doShowPicker(){
+    if (isRawMode) {
+      isRawMode = false;
+      rawViewEl.hidden = true;
+      cardsEl.hidden = false;
+      document.getElementById('hotkey-hints').hidden = false;
+      document.getElementById('action-grid').classList.remove('raw-mode');
+      rawToggleEl.textContent = '\u270e raw CSV';
+    }
+    isDirty = false;
+    currentPath = null; searchQuery = '';
+    document.getElementById('search-input').value = '';
+    showView('view-picker');
+    loadDeckList();
+  }
+
+  // ── Deck Picker ───────────────────────────────────────────────────────────
+  function loadDeckList(){
+    var c=document.getElementById('deck-list');
+    c.innerHTML='<span class="loader"></span> Loading&hellip;';
+    fetch('/api/decks')
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status); return r.json();})
+      .then(function(decks){
+        if(!decks.length){
+          c.innerHTML='<div class="empty-msg">No decks in /anki/.<br>Click &ldquo;+ New Deck&rdquo; to create one.</div>';
+          return;
+        }
+        var html='';
+        for(var i=0;i<decks.length;i++)
+          html+='<div class="deck-item" data-i="'+i+'">'+
+            '<span class="deck-title">'+esc(decks[i].title)+'</span>'+
+            '<span class="deck-edit-btn" data-i="'+i+'" title="Rename">&#9998;</span></div>';
+        c.innerHTML=html;
+        c.querySelectorAll('.deck-item').forEach(function(el){
+          var idx=parseInt(el.dataset.i,10);
+          el.addEventListener('click',function(e){
+            if(e.target.classList.contains('deck-edit-btn')) return;
+            openDeck(decks[idx].path);
+          });
+        });
+        c.querySelectorAll('.deck-edit-btn').forEach(function(btn){
+          var idx=parseInt(btn.dataset.i,10);
+          btn.addEventListener('click',function(e){
+            e.stopPropagation();
+            renameDeck(decks[idx].path, decks[idx].title);
+          });
+        });
+      })
+      .catch(function(e){c.innerHTML='<div class="empty-msg" style="color:#e74c3c;">'+esc(e.message)+'</div>';});
+  }
+
+  function newDeck(){
+    var name=prompt('Deck name:');
+    if(!name||!name.trim()) return;
+    var t=name.trim();
+    if(!/^[\w\s\-]+$/.test(t)){alert('Use letters, numbers, spaces, underscores and hyphens only.'); return;}
+    var path='/anki/'+t+'.csv';
+    var csv=serializeCSV(['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'],[]);
+    fetch('/api/deck?path='+encodeURIComponent(path),{method:'POST',headers:{'Content-Type':'text/plain'},body:csv})
+      .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});
+        showBanner('picker-banner','Deck "'+t+'" created.',false); loadDeckList();})
+      .catch(function(e){showBanner('picker-banner','Error: '+e.message,true);});
+  }
+
+  function renameDeck(oldPath, oldTitle){
+    var newName=prompt('Rename "'+oldTitle+'" to:',oldTitle);
+    if(!newName||!newName.trim()||newName.trim()===oldTitle) return;
+    var t=newName.trim();
+    if(!/^[\w\s\-]+$/.test(t)){alert('Use letters, numbers, spaces, underscores and hyphens only.'); return;}
+    var newPath='/anki/'+t+'.csv';
+    fetch('/api/rename-deck?from='+encodeURIComponent(oldPath)+'&to='+encodeURIComponent(newPath),{method:'POST'})
+      .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);}); loadDeckList();})
+      .catch(function(e){showBanner('picker-banner','Rename failed: '+e.message,true);});
+  }
+
+  // ── Card List ─────────────────────────────────────────────────────────────
+  // pushHistory=true (default): add a history entry. Pass false when called
+  // from popstate (forward navigation) to avoid doubling up entries.
+  function openDeck(path, pushHistory){
+    currentPath = path;
+    isDirty = false;
+    var name=path.replace(/^.*\//,'').replace(/\.csv$/i,'');
+    titleEl.textContent=name;
+    searchQuery=''; document.getElementById('search-input').value='';
+    rows=[]; headers=[];
+    renderCards();
+    showView('view-list');
+    if(pushHistory !== false) history.pushState({view:'list', path:path}, '');
+    fetch('/api/deck?path='+encodeURIComponent(path))
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status); return r.text();})
+      .then(function(text){
+        var p=parseCSV(text);
+        headers=p.headers.length>=6?p.headers
+          :['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'];
+        rows=p.rows.map(function(r){
+          var o=r.slice(0,6); while(o.length<6)o.push('0');
+          if(!o[2])o[2]='0'; if(!o[3])o[3]='2500'; if(!o[4])o[4]='0'; if(!o[5])o[5]='0';
+          return o;
+        });
+        renderCards();
+      })
+      .catch(function(e){showBanner('list-banner','Failed to load: '+e.message,true);});
+  }
+
+  function renderCards(){
+    var c       = document.getElementById('cards-container');
+    var empty   = document.getElementById('list-empty');
+    var noMatch = document.getElementById('no-results');
+    c.innerHTML=''; empty.hidden=true; noMatch.hidden=true;
+    if(!rows.length){ empty.hidden=false; return; }
+    var q=searchQuery, shown=0;
+    for(var i=0;i<rows.length;i++){
+      if(!matchesQuery(rows[i],q)) continue;
+      var wrap=makeCard(i,q);
+      c.appendChild(wrap);
+      // autoResize must run after DOM insertion — scrollHeight is 0 on
+      // detached elements, which would leave textareas at height:0 and
+      // invisible to the iOS Safari form-assistant toolbar.
+      wrap.querySelectorAll('.card-edit').forEach(autoResize);
+      shown++;
+    }
+    if(shown===0) noMatch.hidden=false;
+  }
+
+  function makeCard(i, highlight){
+    var wrap=document.createElement('div');
+    wrap.className='card-wrap';
+    wrap.innerHTML=
+      '<div class="action-dup">&#11036;<span>Copy</span></div>'+
+      '<div class="action-del">&#10006;<span>Delete</span></div>'+
+      '<div class="card-face">'+
+        '<div class="card-half">'+
+          '<div class="card-preview"></div>'+
+          '<textarea class="card-edit" data-row="'+i+'" data-col="0"></textarea>'+
+        '</div>'+
+        '<div class="card-half">'+
+          '<div class="card-preview"></div>'+
+          '<textarea class="card-edit" data-row="'+i+'" data-col="1"></textarea>'+
+        '</div>'+
+      '</div>';
+
+    var cardHalves = Array.from(wrap.querySelectorAll('.card-half'));
+    var cardTas    = cardHalves.map(function(h){ return h.querySelector('textarea'); });
+
+    cardHalves.forEach(function(half,col){
+      var preview=half.querySelector('.card-preview');
+      var ta=cardTas[col];
+      ta.value=rows[i][col];
+      preview.innerHTML=md(rows[i][col], highlight);
+      autoResize(ta);
+
+      half.addEventListener('click',function(){
+        if(wrap._suppressClick){wrap._suppressClick=false; return;}
+        if(wrap._offset!==0){
+          var face=wrap.querySelector('.card-face');
+          face.style.transition='transform 0.2s ease'; face.style.transform='translateX(0)'; wrap._offset=0;
+          return;
+        }
+        half.classList.add('editing'); ta.focus(); autoResize(ta);
+      });
+      ta.addEventListener('input',function(){ rows[i][col]=this.value; isDirty=true; autoResize(this); });
+      ta.addEventListener('focus',function(){
+        if(!half.classList.contains('editing')){
+          closeOtherCards(wrap);
+          half.classList.add('editing');
+          autoResize(this);
+          this.scrollIntoView({behavior:'smooth',block:'center'});
+        }
+      });
+      ta.addEventListener('blur',function(){
+        half.classList.remove('editing');
+        preview.innerHTML=md(this.value, searchQuery||'');
+        resetZoom();
+      });
+      ta.addEventListener('keydown',function(e){
+        if(e.key!=='Tab') return;
+        e.preventDefault();
+        var cont=document.getElementById('cards-container');
+        var allWraps=Array.from(cont.querySelectorAll('.card-wrap'));
+        if(!e.shiftKey){
+          if(col===0){
+            // Front → Back (same card)
+            cardHalves[1].classList.add('editing'); cardTas[1].focus();
+          } else {
+            // Back → Front of next card
+            var nw=allWraps[allWraps.indexOf(wrap)+1];
+            if(nw){
+              var nh=nw.querySelectorAll('.card-half');
+              nh[0].classList.add('editing'); nh[0].querySelector('textarea').focus();
+              nh[0].scrollIntoView({behavior:'smooth',block:'nearest'});
+            }
+          }
+        } else {
+          if(col===1){
+            // Back → Front (same card)
+            cardHalves[0].classList.add('editing'); cardTas[0].focus();
+          } else {
+            // Front → Back of previous card
+            var pw=allWraps[allWraps.indexOf(wrap)-1];
+            if(pw){
+              var ph=pw.querySelectorAll('.card-half');
+              ph[1].classList.add('editing'); ph[1].querySelector('textarea').focus();
+              ph[1].scrollIntoView({behavior:'smooth',block:'nearest'});
+            }
+          }
+        }
+      });
+    });
+
+    setupSwipe(wrap,
+      function(){dupCard(i);},
+      function(){deleteCard(i);}
+    );
+    return wrap;
+  }
+
+  function addCard(){
+    rows.push(['','','0','2500','0','0']);
+    isDirty=true;
+    searchQuery=''; document.getElementById('search-input').value='';
+    renderCards();
+    var halves=document.getElementById('cards-container').querySelectorAll('.card-half');
+    if(halves.length>=2){
+      var last=halves[halves.length-2];
+      last.click();
+      last.scrollIntoView({behavior:'smooth',block:'center'});
+    }
+  }
+
+  function deleteCard(i){ rows.splice(i,1); isDirty=true; renderCards(); }
+  function dupCard(i){
+    var copy=rows[i].slice(); copy[2]='0'; copy[3]='2500'; copy[4]='0'; copy[5]='0';
+    rows.splice(i+1,0,copy); isDirty=true; renderCards();
+  }
+
+  // onSuccess callback is used by the dirty dialog's Save path.
+  function saveCards(onSuccess){
+    var btn=document.getElementById('save-btn');
+    btn.disabled=true; btn.textContent='Saving\u2026';
+    fetch('/api/deck?path='+encodeURIComponent(currentPath),{
+      method:'POST', headers:{'Content-Type':'text/plain'}, body:serializeCSV(headers,rows)
+    })
+      .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});
+        isDirty=false;
+        showBanner('list-banner','Saved.',false);
+        if(onSuccess) onSuccess();
+      })
+      .catch(function(e){showBanner('list-banner','Save failed: '+e.message,true);})
+      .finally(function(){btn.disabled=false; btn.textContent='Save';});
+  }
+
+  // ── Raw CSV mode ──────────────────────────────────────────────────────────
+  var rawToggleEl = document.getElementById('raw-toggle');
+  var rawViewEl   = document.getElementById('raw-view');
+  var rawTa       = document.getElementById('raw-textarea');
+  var cardsEl     = document.getElementById('cards-container');
+  var listEmptyEl = document.getElementById('list-empty');
+  var noResultsEl = document.getElementById('no-results');
+
+  function enterRawMode() {
+    isRawMode = true;
+    rawTa.value = serializeCSV(headers.length ? headers
+      : ['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'], rows);
+    rawViewEl.hidden  = false;
+    cardsEl.hidden    = true;
+    listEmptyEl.hidden = true;
+    noResultsEl.hidden = true;
+    document.getElementById('hotkey-hints').hidden = true;
+    document.getElementById('action-grid').classList.add('raw-mode');
+    rawTa.focus();
+  }
+
+  function exitRawMode() {
+    isRawMode = false;
+    var parsed = parseCSV(rawTa.value);
+    if (parsed.headers.length >= 2) {
+      headers = parsed.headers.length >= 6 ? parsed.headers
+        : ['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'];
+      rows = parsed.rows.map(function(r) {
+        var o = r.slice(0,6); while(o.length<6) o.push('0');
+        if(!o[2])o[2]='0'; if(!o[3])o[3]='2500'; if(!o[4])o[4]='0'; if(!o[5])o[5]='0';
+        return o;
+      });
+      isDirty = true;
+    }
+    rawViewEl.hidden  = true;
+    cardsEl.hidden    = false;
+    document.getElementById('hotkey-hints').hidden = false;
+    document.getElementById('action-grid').classList.remove('raw-mode');
+    rawToggleEl.textContent = '\u270e raw CSV';
+    renderCards();
+  }
+
+  rawToggleEl.addEventListener('click', function(e) {
+    e.preventDefault();
+    if (isRawMode) exitRawMode(); else enterRawMode();
+  });
+
+  document.getElementById('raw-grid-back').addEventListener('click', exitRawMode);
+  document.getElementById('raw-grid-copy').addEventListener('click', function() {
+    copyText(rawTa.value, this);
+  });
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  // Use metaKey (⌘) on Mac, ctrlKey everywhere else — standard cross-platform convention.
+  document.addEventListener('keydown', function(e) {
+    var mod = e.metaKey || e.ctrlKey;
+    if (!mod) return;
+    var inList = !document.getElementById('view-list').hidden;
+    var ta     = document.activeElement;
+    var isCard = ta && ta.classList.contains('card-edit');
+    switch (e.key) {
+      case 'Enter':                                           // ⌘↵ / Ctrl+Enter — new card
+        if (inList) { e.preventDefault(); addCard(); }
+        break;
+      case 's': case 'S':                                    // ⌘S / Ctrl+S — save
+        if (inList) { e.preventDefault(); saveCards(); }
+        break;
+      case 'b': case 'B':                                    // ⌘B / Ctrl+B — bold
+        if (isCard) { e.preventDefault(); toggleDecoration(ta, 'bold'); }
+        break;
+      case 'i': case 'I':                                    // ⌘I / Ctrl+I — italic
+        if (isCard) { e.preventDefault(); toggleDecoration(ta, 'italic'); }
+        break;
+      case 'd': case 'D':                                    // ⌘D / Ctrl+D — duplicate card
+        if (isCard) {
+          var idx = parseInt(ta.dataset.row, 10);
+          if (!isNaN(idx)) { e.preventDefault(); dupCard(idx); }
+        }
+        break;
+    }
+  });
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  // Show platform-appropriate modifier key in the hint bar (⌘ on Mac/iOS, Ctrl+ elsewhere).
+  (function() {
+    var mac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+    var M   = mac ? '\u2318' : 'Ctrl+';       // ⌘ or Ctrl+
+    var RET = mac ? '\u21b5' : 'Enter';       // ↵ or Enter
+    document.getElementById('hint-mods').innerHTML =
+      'Tab \u00b7 sides &nbsp;&nbsp; ' +      // Tab · sides
+      M + 'B \u00b7 bold &nbsp;&nbsp; ' +
+      M + 'I \u00b7 italic &nbsp;&nbsp; ' +
+      M + 'S \u00b7 save &nbsp;&nbsp; ' +
+      M + 'D \u00b7 dup &nbsp;&nbsp; ' +
+      M + RET + ' \u00b7 new card &nbsp;&nbsp; ';
+  })();
+  loadDeckList();
+</script>
+</body>
+</html>

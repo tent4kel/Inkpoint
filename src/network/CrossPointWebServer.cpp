@@ -12,6 +12,7 @@
 
 #include "CrossPointSettings.h"
 #include "SettingsList.h"
+#include "html/DeckEditorPageHtml.generated.h"
 #include "html/FilesPageHtml.generated.h"
 #include "html/HomePageHtml.generated.h"
 #include "html/SettingsPageHtml.generated.h"
@@ -155,6 +156,13 @@ void CrossPointWebServer::begin() {
   server->on("/settings", HTTP_GET, [this] { handleSettingsPage(); });
   server->on("/api/settings", HTTP_GET, [this] { handleGetSettings(); });
   server->on("/api/settings", HTTP_POST, [this] { handlePostSettings(); });
+
+  // Deck editor endpoints
+  server->on("/deck-editor", HTTP_GET, [this] { handleDeckEditorPage(); });
+  server->on("/api/decks",       HTTP_GET,  [this] { handleDeckList(); });
+  server->on("/api/deck",        HTTP_GET,  [this] { handleGetDeck(); });
+  server->on("/api/deck",        HTTP_POST, [this] { handlePostDeck(); });
+  server->on("/api/rename-deck", HTTP_POST, [this] { handleRenameDeck(); });
 
   server->onNotFound([this] { handleNotFound(); });
   LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
@@ -1160,6 +1168,224 @@ void CrossPointWebServer::handlePostSettings() {
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);
   server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");
+}
+
+void CrossPointWebServer::handleDeckEditorPage() const {
+  sendHtmlContent(server.get(), DeckEditorPageHtml, sizeof(DeckEditorPageHtml));
+  LOG_DBG("WEB", "Served deck editor page");
+}
+
+void CrossPointWebServer::handleDeckList() const {
+  server->setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server->send(200, "application/json", "");
+  server->sendContent("[");
+
+  char output[256];
+  constexpr size_t outputSize = sizeof(output);
+  bool seenFirst = false;
+  JsonDocument doc;
+
+  scanFiles("/anki/", [this, &output, &doc, seenFirst](const FileInfo& info) mutable {
+    if (info.isDirectory) return;
+    String lowerName = info.name;
+    lowerName.toLowerCase();
+    if (!lowerName.endsWith(".csv")) return;
+
+    String title = info.name.substring(0, info.name.length() - 4);
+    String path = String("/anki/") + info.name;
+
+    doc.clear();
+    doc["path"] = path;
+    doc["title"] = title;
+
+    const size_t written = serializeJson(doc, output, outputSize);
+    if (written >= outputSize) return;
+
+    if (seenFirst) {
+      server->sendContent(",");
+    } else {
+      seenFirst = true;
+    }
+    server->sendContent(output);
+  });
+
+  server->sendContent("]");
+  server->sendContent("");
+  LOG_DBG("WEB", "Served deck list");
+}
+
+void CrossPointWebServer::handleGetDeck() const {
+  if (!server->hasArg("path")) {
+    server->send(400, "text/plain", "Missing path");
+    return;
+  }
+
+  String path = server->arg("path");
+  if (path.isEmpty()) {
+    server->send(400, "text/plain", "Invalid path");
+    return;
+  }
+  if (!path.startsWith("/")) {
+    path = "/" + path;
+  }
+
+  String lowerPath = path;
+  lowerPath.toLowerCase();
+  if (!lowerPath.endsWith(".csv")) {
+    server->send(400, "text/plain", "Only .csv files are supported");
+    return;
+  }
+
+  if (!Storage.exists(path.c_str())) {
+    server->send(404, "text/plain", "Deck not found");
+    return;
+  }
+
+  FsFile file = Storage.open(path.c_str());
+  if (!file) {
+    server->send(500, "text/plain", "Failed to open deck");
+    return;
+  }
+  if (file.isDirectory()) {
+    file.close();
+    server->send(400, "text/plain", "Path is a directory");
+    return;
+  }
+
+  server->setContentLength(file.size());
+  server->send(200, "text/plain", "");
+
+  WiFiClient client = server->client();
+  client.write(file);
+  file.close();
+  LOG_DBG("WEB", "Served deck: %s", path.c_str());
+}
+
+void CrossPointWebServer::handlePostDeck() const {
+  if (!server->hasArg("path")) {
+    server->send(400, "text/plain", "Missing path");
+    return;
+  }
+
+  String path = server->arg("path");
+  if (path.isEmpty()) {
+    server->send(400, "text/plain", "Invalid path");
+    return;
+  }
+  if (!path.startsWith("/")) {
+    path = "/" + path;
+  }
+
+  String lowerPath = path;
+  lowerPath.toLowerCase();
+  if (!lowerPath.endsWith(".csv")) {
+    server->send(400, "text/plain", "Only .csv files are supported");
+    return;
+  }
+
+  if (!server->hasArg("plain")) {
+    server->send(400, "text/plain", "Missing body");
+    return;
+  }
+
+  const String& body = server->arg("plain");
+  if (body.length() > 131072) {
+    server->send(413, "text/plain", "Deck too large (max 128KB)");
+    return;
+  }
+
+  // Ensure /anki/ directory exists
+  if (!Storage.exists("/anki")) {
+    Storage.mkdir("/anki");
+  }
+
+  // Write to temp file first
+  constexpr const char* TMP_PATH = "/anki/.deck_save.tmp";
+  FsFile tmpFile;
+  if (!Storage.openFileForWrite("WEB", TMP_PATH, tmpFile)) {
+    server->send(500, "text/plain", "Write failed");
+    return;
+  }
+
+  const size_t written = tmpFile.write(reinterpret_cast<const uint8_t*>(body.c_str()), body.length());
+  tmpFile.close();
+
+  if (written != body.length()) {
+    Storage.remove(TMP_PATH);
+    server->send(500, "text/plain", "Write failed");
+    return;
+  }
+
+  // Atomic swap: remove target, rename temp to target
+  if (Storage.exists(path.c_str())) {
+    Storage.remove(path.c_str());
+  }
+
+  FsFile tmp = Storage.open(TMP_PATH);
+  if (!tmp) {
+    server->send(500, "text/plain", "Write failed");
+    return;
+  }
+  const bool ok = tmp.rename(path.c_str());
+  tmp.close();
+
+  if (!ok) {
+    Storage.remove(TMP_PATH);
+    server->send(500, "text/plain", "Write failed");
+    return;
+  }
+
+  LOG_DBG("WEB", "Saved deck: %s (%d bytes)", path.c_str(), written);
+  server->send(200, "text/plain", "OK");
+}
+
+void CrossPointWebServer::handleRenameDeck() const {
+  if (!server->hasArg("from") || !server->hasArg("to")) {
+    server->send(400, "text/plain", "Missing from/to");
+    return;
+  }
+
+  String fromPath = server->arg("from");
+  String toPath   = server->arg("to");
+
+  if (!fromPath.startsWith("/")) fromPath = "/" + fromPath;
+  if (!toPath.startsWith("/"))   toPath   = "/" + toPath;
+
+  String lFrom = fromPath; lFrom.toLowerCase();
+  String lTo   = toPath;   lTo.toLowerCase();
+  if (!lFrom.endsWith(".csv") || !lTo.endsWith(".csv")) {
+    server->send(400, "text/plain", "Only .csv files are supported");
+    return;
+  }
+  if (!lFrom.startsWith("/anki/") || !lTo.startsWith("/anki/")) {
+    server->send(400, "text/plain", "Path must be inside /anki/");
+    return;
+  }
+
+  if (!Storage.exists(fromPath.c_str())) {
+    server->send(404, "text/plain", "Deck not found");
+    return;
+  }
+  if (Storage.exists(toPath.c_str())) {
+    server->send(409, "text/plain", "A deck with that name already exists");
+    return;
+  }
+
+  FsFile f = Storage.open(fromPath.c_str());
+  if (!f) {
+    server->send(500, "text/plain", "Open failed");
+    return;
+  }
+  const bool ok = f.rename(toPath.c_str());
+  f.close();
+
+  if (!ok) {
+    server->send(500, "text/plain", "Rename failed");
+    return;
+  }
+
+  LOG_DBG("WEB", "Renamed deck: %s → %s", fromPath.c_str(), toPath.c_str());
+  server->send(200, "text/plain", "OK");
 }
 
 // WebSocket callback trampoline
