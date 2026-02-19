@@ -489,11 +489,17 @@ def extract_ligatures_fonttools(font_path, codepoints):
     if 'GSUB' in font:
         gsub = font['GSUB'].table
 
-        # Find lookup indices for 'liga' and 'rlig' features
+        # Find lookup indices for ligature features.
+        # Currently extracts 'liga' (standard) and 'rlig' (required) only.
+        # To also extract discretionary or historical ligatures, add:
+        #   'dlig' - Discretionary Ligatures (e.g., ft, st in Bookerly)
+        #   'hlig' - Historical Ligatures (e.g., long-s+t in OpenDyslexic)
+        # These are off by default in standard text renderers.
+        LIGATURE_FEATURES = ('liga', 'rlig')
         liga_lookup_indices = set()
         if gsub.FeatureList:
             for fr in gsub.FeatureList.FeatureRecord:
-                if fr.FeatureTag in ('liga', 'rlig'):
+                if fr.FeatureTag in LIGATURE_FEATURES:
                     liga_lookup_indices.update(fr.Feature.LookupListIndex)
 
         for li in liga_lookup_indices:
@@ -526,10 +532,13 @@ def extract_ligatures_fonttools(font_path, codepoints):
                         if lig.LigGlyph in glyph_to_cp:
                             lig_cp = glyph_to_cp[lig.LigGlyph]
                         elif seq in STANDARD_LIGATURE_MAP:
-                            # GSUB glyph has no cmap entry; fall back to the
-                            # standard Unicode ligature codepoint for this sequence
                             lig_cp = STANDARD_LIGATURE_MAP[seq]
                         else:
+                            seq_str = ', '.join(f'U+{cp:04X}' for cp in seq)
+                            print(f"ligatures: WARNING: dropping ligature ({seq_str}) -> "
+                                  f"glyph '{lig.LigGlyph}': output glyph has no cmap entry "
+                                  f"and input sequence is not in STANDARD_LIGATURE_MAP",
+                                  file=sys.stderr)
                             continue
                         raw_ligatures[seq] = lig_cp
 
