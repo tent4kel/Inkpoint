@@ -105,4 +105,11 @@ class CrossPointWebServer {
   void handleSettingsPage() const;
   void handleGetSettings() const;
   void handlePostSettings();
+
+  // Deck editor handlers
+  void handleDeckEditorPage() const;
+  void handleDeckList() const;
+  void handleGetDeck() const;
+  void handlePostDeck() const;
+  void handleRenameDeck() const;
 };
