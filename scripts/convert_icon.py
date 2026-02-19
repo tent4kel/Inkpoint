@@ -16,7 +16,10 @@ def load_image(path, width, height):
     ext = os.path.splitext(path)[1].lower()
     if ext == '.svg':
         png_bytes = svg_to_png_bytes(path, width, height)
-        img = Image.open(io.BytesIO(png_bytes))
+        img = Image.open(io.BytesIO(png_bytes)).convert('RGBA')
+        background = Image.new('RGBA', img.size, (255, 255, 255, 255))
+        background.paste(img, mask=img.split()[3])
+        img = background
     else:
         img = Image.open(path)
         img = img.convert('RGBA')
