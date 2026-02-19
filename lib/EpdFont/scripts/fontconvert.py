@@ -136,7 +136,6 @@ def load_glyph(code_point):
             face.load_glyph(glyph_index, freetype.FT_LOAD_RENDER)
             return face
         face_index += 1
-    print(f"code point {code_point} ({hex(code_point)}) not found in font stack!", file=sys.stderr)
     return None
 
 unmerged_intervals = sorted(intervals + add_ints)
