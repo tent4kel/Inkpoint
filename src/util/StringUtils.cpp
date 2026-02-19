@@ -12,11 +12,11 @@ std::string sanitizeFilename(const std::string& name, size_t maxLength) {
     // Replace invalid filename characters with underscore
     if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') {
       result += '_';
-    } else if (c >= 32 && c < 127) {
-      // Keep printable ASCII characters
+    } else if ((c >= 32 && c < 127) || static_cast<unsigned char>(c) >= 128) {
+      // Keep printable ASCII and UTF-8 multi-byte characters
       result += c;
     }
-    // Skip non-printable characters
+    // Skip non-printable ASCII characters (0-31, 127)
   }
 
   // Trim leading/trailing spaces and dots
