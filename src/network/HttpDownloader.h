@@ -30,6 +30,19 @@ class HttpDownloader {
   static bool fetchUrl(const std::string& url, Stream& stream);
 
   /**
+   * POST to a URL and get the response body.
+   * @param url The URL to POST to
+   * @param body URL-encoded POST body
+   * @param authHeader Authorization header value (e.g. "OAuth ...")
+   * @param outContent The response content (output)
+   * @param maxBytes If > 0, stop reading after this many bytes (prevents OOM on large responses)
+   * @return true if request succeeded, false on error
+   */
+  static bool postUrl(const std::string& url, const std::string& body, const std::string& authHeader,
+                      std::string& outContent, size_t maxBytes = 0,
+                      ProgressCallback progress = nullptr);
+
+  /**
    * Download a file to the SD card.
    * @param url The URL to download
    * @param destPath The destination path on SD card
