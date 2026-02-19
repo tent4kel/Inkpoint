@@ -326,7 +326,7 @@ void CrossPointWebServer::handleStatus() const {
   server->send(200, "application/json", json);
 }
 
-void CrossPointWebServer::scanFiles(const char* path, const std::function<void(FileInfo)>& callback) const {
+void CrossPointWebServer::scanFiles(const char* path, const std::function<void(FileInfo)>& callback, bool showHidden) const {
   FsFile root = Storage.open(path);
   if (!root) {
     LOG_DBG("WEB", "Failed to open directory: %s", path);
@@ -347,15 +347,16 @@ void CrossPointWebServer::scanFiles(const char* path, const std::function<void(F
     file.getName(name, sizeof(name));
     auto fileName = String(name);
 
-    // Skip hidden items (starting with ".")
-    bool shouldHide = fileName.startsWith(".");
-
-    // Check against explicitly hidden items list
-    if (!shouldHide) {
-      for (size_t i = 0; i < HIDDEN_ITEMS_COUNT; i++) {
-        if (fileName.equals(HIDDEN_ITEMS[i])) {
-          shouldHide = true;
-          break;
+    // Skip hidden items unless showHidden is true
+    bool shouldHide = false;
+    if (!showHidden) {
+      shouldHide = fileName.startsWith(".");
+      if (!shouldHide) {
+        for (size_t i = 0; i < HIDDEN_ITEMS_COUNT; i++) {
+          if (fileName.equals(HIDDEN_ITEMS[i])) {
+            shouldHide = true;
+            break;
+          }
         }
       }
     }
@@ -409,6 +410,8 @@ void CrossPointWebServer::handleFileListData() const {
     }
   }
 
+  bool showHidden = server->hasArg("showHidden") && server->arg("showHidden") == "1";
+
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
   server->sendContent("[");
@@ -437,7 +440,7 @@ void CrossPointWebServer::handleFileListData() const {
       seenFirst = true;
     }
     server->sendContent(output);
-  });
+  }, showHidden);
   server->sendContent("]");
   // End of streamed response, empty chunk to signal client
   server->sendContent("");
@@ -965,22 +968,24 @@ void CrossPointWebServer::handleDelete() const {
   bool success = false;
 
   if (itemType == "folder") {
-    // For folders, try to remove (will fail if not empty)
-    FsFile dir = Storage.open(itemPath.c_str());
-    if (dir && dir.isDirectory()) {
-      // Check if folder is empty
-      FsFile entry = dir.openNextFile();
-      if (entry) {
-        // Folder is not empty
+    // Recursively delete folder and all contents
+    std::function<bool(const String&)> recursiveDelete = [&](const String& p) -> bool {
+      FsFile dir = Storage.open(p.c_str());
+      if (!dir || !dir.isDirectory()) return Storage.remove(p.c_str());
+      char name[256];
+      for (FsFile entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
+        entry.getName(name, sizeof(name));
+        String childPath = p + "/" + name;
         entry.close();
-        dir.close();
-        LOG_DBG("WEB", "Delete failed - folder not empty: %s", itemPath.c_str());
-        server->send(400, "text/plain", "Folder is not empty. Delete contents first.");
-        return;
+        if (!recursiveDelete(childPath)) {
+          dir.close();
+          return false;
+        }
       }
       dir.close();
-    }
-    success = Storage.rmdir(itemPath.c_str());
+      return Storage.rmdir(p.c_str());
+    };
+    success = recursiveDelete(itemPath);
   } else {
     // For files, use remove
     success = Storage.remove(itemPath.c_str());
