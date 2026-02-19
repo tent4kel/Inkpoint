@@ -6018,6 +6018,8 @@ static const EpdFontData ubuntu_12_bold = {
     24,
     -5,
     false,
+    nullptr,
+    0,
     ubuntu_12_boldKernPairs,
     4152,
     ubuntu_12_boldLigaturePairs,
