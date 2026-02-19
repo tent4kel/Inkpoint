@@ -9,14 +9,15 @@ std::string sanitizeFilename(const std::string& name, size_t maxLength) {
   result.reserve(name.size());
 
   for (char c : name) {
+    const unsigned char uc = static_cast<unsigned char>(c);
     // Replace invalid filename characters with underscore
     if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') {
       result += '_';
-    } else if (c >= 32 && c < 127) {
-      // Keep printable ASCII characters
+    } else if (uc >= 32 && uc != 127) {
+      // Keep printable ASCII and UTF-8 multi-byte sequence bytes (uc >= 128)
       result += c;
     }
-    // Skip non-printable characters
+    // Skip control characters (0–31) and DEL (127)
   }
 
   // Trim leading/trailing spaces and dots

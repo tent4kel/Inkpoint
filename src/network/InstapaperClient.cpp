@@ -244,7 +244,8 @@ bool InstapaperClient::listBookmarks(int limit, std::vector<InstapaperBookmark>&
   return true;
 }
 
-bool InstapaperClient::getArticleText(const std::string& bookmarkId, std::string& outHtml) {
+bool InstapaperClient::getArticleText(const std::string& bookmarkId, std::string& outHtml,
+                                      HttpDownloader::ProgressCallback progress) {
   std::string url = std::string(BASE_URL) + "/api/1/bookmarks/get_text";
 
   std::map<std::string, std::string> params;
@@ -256,7 +257,11 @@ bool InstapaperClient::getArticleText(const std::string& bookmarkId, std::string
   std::string authHeader = InstapaperOAuth::sign("POST", url, params, InstapaperSecrets::consumerKey(), InstapaperSecrets::consumerSecret(), token, tokenSecret);
   std::string body = buildBody(params);
 
-  bool ok = withRetries([&]() { return HttpDownloader::postUrl(url, body, authHeader, outHtml); });
+  // 32 KB cap: the string doubles 0→1→2→4→8→16→32 KB (peak realloc = 16+32 = 48 KB).
+  // The next step (32→64 KB, peak 96 KB) exceeds available heap when WiFiClientSecure (~20 KB)
+  // and the concurrent display-task render allocations are accounted for.
+  constexpr size_t MAX_ARTICLE_HTML = 32768;  // 32 KB
+  bool ok = withRetries([&]() { return HttpDownloader::postUrl(url, body, authHeader, outHtml, MAX_ARTICLE_HTML, progress); });
   if (!ok) {
     LOG_ERR("IPC", "Get article text failed for bookmark %s after retries", bookmarkId.c_str());
     return false;

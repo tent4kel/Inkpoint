@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include "HttpDownloader.h"
 
 struct InstapaperBookmark {
   std::string bookmarkId;
@@ -19,5 +20,6 @@ class InstapaperClient {
   static bool listBookmarks(int limit, std::vector<InstapaperBookmark>& outBookmarks);
 
   // Get article HTML text
-  static bool getArticleText(const std::string& bookmarkId, std::string& outHtml);
+  static bool getArticleText(const std::string& bookmarkId, std::string& outHtml,
+                             HttpDownloader::ProgressCallback progress = nullptr);
 };

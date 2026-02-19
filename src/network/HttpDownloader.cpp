@@ -63,7 +63,33 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent) {
 }
 
 bool HttpDownloader::postUrl(const std::string& url, const std::string& body, const std::string& authHeader,
-                             std::string& outContent) {
+                             std::string& outContent, size_t maxBytes,
+                             ProgressCallback progress) {
+  // Capped path (maxBytes > 0): pre-reserve the response string BEFORE creating the TLS context.
+  //
+  // Why: std::string::append() triggers doubling reallocations that require old+new buffers
+  // simultaneously. On a fragmented heap (after multiple TLS alloc/free cycles from retries
+  // or concurrent syncs), even 90+ KB total free may have no single contiguous 32 KB block.
+  // That triggers __throw_bad_alloc() → abort() on no-exceptions builds (MCAUSE=0x7, MTVAL=0x0).
+  //
+  // Strategy — two steps, no large allocation after TLS is created:
+  //   1. malloc(maxBytes) as a probe: validates a contiguous block exists; null = graceful fail.
+  //   2. free(probe) then immediately outContent.reserve(maxBytes): on single-core RTOS there is
+  //      no task switch between these two lines, so reserve() reuses the exact same block.
+  //   3. TLS context created (~34 KB) from the remaining heap.
+  //   4. Stream into outContent.append() — capacity already maxBytes, zero reallocations.
+  //   5. http.end() + client.reset() free TLS. No further large malloc needed at all.
+  if (maxBytes > 0) {
+    char* probe = static_cast<char*>(malloc(maxBytes));
+    if (!probe) {
+      LOG_ERR("HTTP", "postUrl: no contiguous %zu B block (free: %u)", maxBytes, ESP.getFreeHeap());
+      return false;
+    }
+    free(probe);                  // frees the block; no task switch before reserve() below
+    outContent.clear();
+    outContent.reserve(maxBytes); // reuses probe's block; capacity = maxBytes, no realloc during stream
+  }
+
   std::unique_ptr<WiFiClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
     auto* secureClient = new WiFiClientSecure();
@@ -92,10 +118,53 @@ bool HttpDownloader::postUrl(const std::string& url, const std::string& body, co
     return false;
   }
 
-  outContent = http.getString().c_str();
+  const int contentLength = http.getSize();
+  if (maxBytes == 0) outContent.clear();
+
+  WiFiClient* stream = http.getStreamPtr();
+  if (!stream) {
+    LOG_ERR("HTTP", "POST: failed to get stream ptr");
+    http.end();
+    return false;
+  }
+
+  // Heap-allocate the chunk buffer to keep stack frame small (< 256 bytes)
+  uint8_t* chunkBuf = static_cast<uint8_t*>(malloc(DOWNLOAD_CHUNK_SIZE));
+  if (!chunkBuf) {
+    LOG_ERR("HTTP", "POST: failed to alloc chunk buffer");
+    http.end();
+    return false;
+  }
+
+  while (http.connected() &&
+         (contentLength <= 0 || outContent.size() < static_cast<size_t>(contentLength))) {
+    const size_t available = stream->available();
+    if (available == 0) {
+      delay(1);
+      continue;
+    }
+    size_t toRead = available < DOWNLOAD_CHUNK_SIZE ? available : DOWNLOAD_CHUNK_SIZE;
+    if (maxBytes > 0 && outContent.size() + toRead > maxBytes) {
+      toRead = maxBytes - outContent.size();
+    }
+    if (toRead == 0) break;
+    const size_t bytesRead = stream->readBytes(chunkBuf, toRead);
+    if (bytesRead == 0) break;
+    outContent.append(reinterpret_cast<char*>(chunkBuf), bytesRead);
+    if (progress) {
+      const size_t total = contentLength > 0 ? static_cast<size_t>(contentLength) : maxBytes;
+      progress(outContent.size(), total);
+    }
+  }
+
+  free(chunkBuf);
   http.end();
 
-  LOG_DBG("HTTP", "POST success (%zu bytes)", outContent.size());
+  if (maxBytes > 0 && outContent.size() >= maxBytes) {
+    LOG_INF("HTTP", "POST response capped at %zu bytes (free: %u)", maxBytes, ESP.getFreeHeap());
+  } else {
+    LOG_DBG("HTTP", "POST success (%zu bytes)", outContent.size());
+  }
   return true;
 }
 
