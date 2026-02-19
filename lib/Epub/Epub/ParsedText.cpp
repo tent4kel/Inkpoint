@@ -134,8 +134,9 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
 
   // Ensure any word that would overflow even as the first entry on a line is split using fallback hyphenation.
   for (size_t i = 0; i < wordWidths.size(); ++i) {
-    // First word needs to fit in reduced width if there's an indent
-    const int effectiveWidth = i == 0 ? pageWidth - firstLineIndent : pageWidth;
+    // First word needs to fit in reduced width if there's a text-indent;
+    // subsequent words must fit in the reduced width if there's a hanging indent.
+    const int effectiveWidth = i == 0 ? pageWidth - firstLineIndent : pageWidth - blockStyle.hangingIndent;
     while (wordWidths[i] > effectiveWidth) {
       if (!hyphenateWordAtIndex(i, effectiveWidth, renderer, fontId, wordWidths, /*allowFallbackBreaks=*/true,
                                 &continuesVec)) {
@@ -159,8 +160,8 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
     int currlen = 0;
     dp[i] = MAX_COST;
 
-    // First line has reduced width due to text-indent
-    const int effectivePageWidth = i == 0 ? pageWidth - firstLineIndent : pageWidth;
+    // First line: reduced by text-indent. Subsequent lines: reduced by hanging indent.
+    const int effectivePageWidth = i == 0 ? pageWidth - firstLineIndent : pageWidth - blockStyle.hangingIndent;
 
     for (size_t j = i; j < totalWordCount; ++j) {
       // Add space before word j, unless it's the first word on the line or a continuation
@@ -264,8 +265,8 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
     const size_t lineStart = currentIndex;
     int lineWidth = 0;
 
-    // First line has reduced width due to text-indent
-    const int effectivePageWidth = isFirstLine ? pageWidth - firstLineIndent : pageWidth;
+    // First line: reduced by text-indent. Subsequent lines: reduced by hanging indent.
+    const int effectivePageWidth = isFirstLine ? pageWidth - firstLineIndent : pageWidth - blockStyle.hangingIndent;
 
     // Consume as many words as possible for current line, splitting when prefixes fit
     while (currentIndex < wordWidths.size()) {
@@ -417,6 +418,10 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
           ? blockStyle.textIndent
           : 0;
 
+  // lineStartX: where the text starts on this line.
+  // First line uses text-indent; subsequent lines use hanging indent (e.g. list items).
+  const int lineStartX = isFirstLine ? firstLineIndent : static_cast<int>(blockStyle.hangingIndent);
+
   // Calculate total word width for this line and count actual word gaps
   // (continuation words attach to previous word with no gap)
   int lineWordWidthSum = 0;
@@ -430,8 +435,8 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     }
   }
 
-  // Calculate spacing (account for indent reducing effective page width on first line)
-  const int effectivePageWidth = pageWidth - firstLineIndent;
+  // Calculate spacing (account for lineStartX reducing the effective page width)
+  const int effectivePageWidth = pageWidth - lineStartX;
   const int spareSpace = effectivePageWidth - lineWordWidthSum;
 
   int spacing = spaceWidth;
@@ -442,8 +447,8 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     spacing = spareSpace / static_cast<int>(actualGapCount);
   }
 
-  // Calculate initial x position (first line starts at indent for left/justified text)
-  auto xpos = static_cast<uint16_t>(firstLineIndent);
+  // Calculate initial x position
+  auto xpos = static_cast<uint16_t>(lineStartX);
   if (blockStyle.alignment == CssTextAlign::Right) {
     xpos = spareSpace - static_cast<int>(actualGapCount) * spaceWidth;
   } else if (blockStyle.alignment == CssTextAlign::Center) {
