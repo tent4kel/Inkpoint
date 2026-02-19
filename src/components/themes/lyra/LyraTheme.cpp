@@ -11,6 +11,7 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "components/icons/book.h"
+#include "components/icons/flashcards.h"
 #include "components/icons/book24.h"
 #include "components/icons/cover.h"
 #include "components/icons/file24.h"
@@ -75,6 +76,8 @@ const uint8_t* iconForName(UIIcon icon, int size) {
         return WifiIcon;
       case UIIcon::Hotspot:
         return HotspotIcon;
+      case UIIcon::Flashcards:
+        return FlashcardsIcon;
       default:
         return nullptr;
     }
