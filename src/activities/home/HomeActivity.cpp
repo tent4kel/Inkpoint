@@ -239,7 +239,7 @@ void HomeActivity::render(RenderLock&&) {
     insertPos++;
   }
   menuItems.insert(menuItems.begin() + insertPos, "Flashcards");
-  menuIcons.insert(menuIcons.begin() + insertPos, Book);
+  menuIcons.insert(menuIcons.begin() + insertPos, Flashcards);
   insertPos++;
 
   GUI.drawButtonMenu(
