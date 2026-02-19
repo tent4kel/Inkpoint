@@ -166,11 +166,10 @@ AnkiActivity::CardMargins AnkiActivity::getCardMargins() const {
   mBottom += cachedScreenMargin;
 
   // Button hints are drawn at the physical bottom of the panel (portrait coords).
-  // In portrait, physical bottom = logical bottom.
+  // In portrait, physical bottom = logical bottom — no side hints, full width used.
   // In LandscapeCCW, physical bottom = logical right.
   if (ankiPortrait) {
     mBottom += metrics.buttonHintsHeight;
-    mRight += metrics.sideButtonHintsWidth;
   } else {
     mRight += metrics.buttonHintsHeight;
   }
@@ -528,9 +527,6 @@ void AnkiActivity::renderDeckSummary() {
   const char* startLabel = !reviewCompleted ? "Start" : (dueCount > 0 ? "Again" : "Go on");
   const auto labels = mappedInput.mapLabels("Back", startLabel, "Swap", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  if (ankiPortrait) {
-    GUI.drawSideButtonHints(renderer, "Back", "");
-  }
 }
 
 void AnkiActivity::renderCardSide(const char* label) {
@@ -576,9 +572,6 @@ void AnkiActivity::renderCardSide(const char* label) {
     GUI.drawButtonHints(renderer, "", "", "", "");
   } else {
     GUI.drawButtonHints(renderer, "Again", "Hard", "Good", "Easy");
-  }
-  if (ankiPortrait) {
-    GUI.drawSideButtonHints(renderer, "", "");
   }
 }
 
