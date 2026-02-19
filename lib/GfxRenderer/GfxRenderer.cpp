@@ -751,7 +751,6 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
   const auto& font = fontIt->second;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
     cp = font.applyLigatures(cp, text, style);
-    width += font.getGlyph(cp, style)->advanceX;
     if (prevCp != 0) {
       width += font.getKerning(prevCp, cp, style);
     }
