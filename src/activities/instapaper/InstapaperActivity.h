@@ -67,7 +67,7 @@ class InstapaperActivity final : public Activity {
   void openArticle(int index);
   void deleteArticle(int index);
   void downloadNewest();
-  void downloadSingleArticle(DisplayBookmark& bm);
+  void downloadSingleArticle(DisplayBookmark& bm, HttpDownloader::ProgressCallback progress = nullptr);
   std::string getArticlePath(const DisplayBookmark& bm) const;
   bool preventAutoSleep() override { return syncing || state == State::DOWNLOADING; }
 };
