@@ -97,7 +97,7 @@ void InstapaperSettingsActivity::handleSelection() {
     // Username
     exitActivity();
     enterNewActivity(new KeyboardEntryActivity(
-        renderer, mappedInput, "Instapaper Email", pendingUsername, 10, 128, false,
+        renderer, mappedInput, "Instapaper Email", pendingUsername, 128, false,
         [this](const std::string& username) {
           pendingUsername = username;
           exitActivity();
@@ -111,7 +111,7 @@ void InstapaperSettingsActivity::handleSelection() {
     // Password
     exitActivity();
     enterNewActivity(new KeyboardEntryActivity(
-        renderer, mappedInput, "Instapaper Password", pendingPassword, 10, 128, true,
+        renderer, mappedInput, "Instapaper Password", pendingPassword, 128, true,
         [this](const std::string& password) {
           pendingPassword = password;
           exitActivity();
