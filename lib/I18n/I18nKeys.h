@@ -363,6 +363,7 @@ enum class StrId : uint16_t {
   STR_INSTAPAPER_PASSWORD,
   STR_INSTAPAPER_TOKEN,
   STR_INSTAPAPER_TOKEN_SECRET,
+  STR_SWITCH_FIRMWARE,
   // Sentinel - must be last
   _COUNT
 };
