@@ -247,7 +247,7 @@ void HomeActivity::render(Activity::RenderLock&&) {
   }
   if (hasInstapaper) {
     menuItems.insert(menuItems.begin() + insertPos, "Instapaper");
-    menuIcons.insert(menuIcons.begin() + insertPos, Text);
+    menuIcons.insert(menuIcons.begin() + insertPos, Newspaper);
     insertPos++;
   }
 
