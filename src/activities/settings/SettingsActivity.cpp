@@ -14,6 +14,7 @@
 #include "SettingsList.h"
 #include "StatusBarSettingsActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include <esp_ota_ops.h>
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -51,6 +52,7 @@ void SettingsActivity::onEnter() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_BROWSER, SettingAction::OPDSBrowser));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_SWITCH_FIRMWARE, SettingAction::SwitchFirmware));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
 
@@ -204,6 +206,15 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::Language:
         enterSubActivity(new LanguageSelectActivity(renderer, mappedInput, onComplete));
         break;
+      case SettingAction::SwitchFirmware: {
+        const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+        if (next != nullptr) {
+          LOG_INF("Settings", "Switching boot partition to %s", next->label);
+          esp_ota_set_boot_partition(next);
+          esp_restart();
+        }
+        break;
+      }
       case SettingAction::None:
         // Do nothing
         break;
