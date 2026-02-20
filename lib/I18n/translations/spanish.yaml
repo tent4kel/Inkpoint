@@ -2,7 +2,7 @@ _language_name: "Español"
 _language_code: "SPANISH"
 _order: "1"
 
-STR_CROSSPOINT: "CrossPoint"
+STR_CROSSPOINT: "Inkpoint"
 STR_BOOTING: "BOOTING"
 STR_SLEEPING: "SLEEPING"
 STR_ENTERING_SLEEP: "ENTERING SLEEP"

@@ -2,7 +2,7 @@ _language_name: "Deutsch"
 _language_code: "GERMAN"
 _order: "3"
 
-STR_CROSSPOINT: "CrossPoint"
+STR_CROSSPOINT: "Inkpoint"
 STR_BOOTING: "STARTEN"
 STR_SLEEPING: "STANDBY"
 STR_ENTERING_SLEEP: "Standby"
