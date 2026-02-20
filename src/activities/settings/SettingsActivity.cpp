@@ -204,7 +204,15 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::SwitchFirmware: {
         const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
         if (next != nullptr) {
-          LOG_INF("Settings", "Switching boot partition to %s", next->label);
+          esp_app_desc_t desc;
+          const esp_err_t descErr = esp_ota_get_partition_description(next, &desc);
+          if (descErr != ESP_OK) {
+            LOG_ERR("Settings", "No valid app on partition %s: %s (0x%x)", next->label,
+                    esp_err_to_name(descErr), descErr);
+            break;
+          }
+          LOG_INF("Settings", "Switching to %s v%s on partition %s", desc.project_name, desc.version,
+                  next->label);
           const esp_err_t err = esp_ota_set_boot_partition(next);
           if (err == ESP_OK) {
             esp_restart();
