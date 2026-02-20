@@ -205,8 +205,12 @@ void SettingsActivity::toggleCurrentSetting() {
         const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
         if (next != nullptr) {
           LOG_INF("Settings", "Switching boot partition to %s", next->label);
-          esp_ota_set_boot_partition(next);
-          esp_restart();
+          const esp_err_t err = esp_ota_set_boot_partition(next);
+          if (err == ESP_OK) {
+            esp_restart();
+          } else {
+            LOG_ERR("Settings", "esp_ota_set_boot_partition failed: %s (0x%x)", esp_err_to_name(err), err);
+          }
         }
         break;
       }
