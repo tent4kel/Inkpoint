@@ -121,8 +121,11 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
   const auto& font = fontIt->second;
 
   uint32_t cp;
+  uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
-    renderChar(font, cp, &xpos, &yPos, black, style);
+    cp = font.applyLigatures(cp, text, style);
+    renderChar(font, cp, &xpos, &yPos, black, style, prevCp);
+    prevCp = cp;
   }
 }
 
@@ -748,7 +751,22 @@ int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style styl
   return spaceGlyph ? spaceGlyph->advanceX : 0;
 }
 
-int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, const EpdFontFamily::Style style) const {
+int GfxRenderer::getSpaceKernAdjust(const int fontId, const uint32_t leftCp, const uint32_t rightCp,
+                                    const EpdFontFamily::Style style) const {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) return 0;
+  const auto& font = fontIt->second;
+  return font.getKerning(leftCp, ' ', style) + font.getKerning(' ', rightCp, style);
+}
+
+int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint32_t rightCp,
+                            const EpdFontFamily::Style style) const {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) return 0;
+  return fontIt->second.getKerning(leftCp, rightCp, style);
+}
+
+int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFamily::Style style) const {
   const auto fontIt = fontMap.find(fontId);
   if (fontIt == fontMap.end()) {
     LOG_ERR("GFX", "Font %d not found", fontId);
@@ -756,12 +774,16 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, const EpdFo
   }
 
   uint32_t cp;
+  uint32_t prevCp = 0;
   int width = 0;
   const auto& font = fontIt->second;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
-    const EpdGlyph* glyph = font.getGlyph(cp, style);
-    if (!glyph) glyph = font.getGlyph(REPLACEMENT_GLYPH, style);
-    if (glyph) width += glyph->advanceX;
+    cp = font.applyLigatures(cp, text, style);
+    if (prevCp != 0) {
+      width += font.getKerning(prevCp, cp, style);
+    }
+    width += font.getGlyph(cp, style)->advanceX;
+    prevCp = cp;
   }
   return width;
 }
@@ -817,13 +839,21 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
   int yPos = y;  // Current Y position (decreases as we draw characters)
 
   uint32_t cp;
+  uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
+    cp = font.applyLigatures(cp, text, style);
+
     const EpdGlyph* glyph = font.getGlyph(cp, style);
     if (!glyph) {
       glyph = font.getGlyph(REPLACEMENT_GLYPH, style);
     }
     if (!glyph) {
       continue;
+    }
+
+    // Apply kerning adjustment before rendering
+    if (prevCp != 0) {
+      yPos -= font.getKerning(prevCp, cp, style);
     }
 
     const EpdFontData* fontData = font.getData(style);
@@ -872,6 +902,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
 
     // Move to next character position (going up, so decrease Y)
     yPos -= glyph->advanceX;
+    prevCp = cp;
   }
 }
 
@@ -979,7 +1010,7 @@ void GfxRenderer::cleanupGrayscaleWithFrameBuffer() const {
 }
 
 void GfxRenderer::renderChar(const EpdFontFamily& fontFamily, const uint32_t cp, int* x, const int* y,
-                             const bool pixelState, const EpdFontFamily::Style style) const {
+                             const bool pixelState, const EpdFontFamily::Style style, const uint32_t prevCp) const {
   const EpdGlyph* glyph = fontFamily.getGlyph(cp, style);
   if (!glyph) {
     glyph = fontFamily.getGlyph(REPLACEMENT_GLYPH, style);
@@ -989,6 +1020,11 @@ void GfxRenderer::renderChar(const EpdFontFamily& fontFamily, const uint32_t cp,
   if (!glyph) {
     LOG_ERR("GFX", "No glyph for codepoint %d", cp);
     return;
+  }
+
+  // Apply kerning adjustment before rendering
+  if (prevCp != 0) {
+    *x += fontFamily.getKerning(prevCp, cp, style);
   }
 
   const EpdFontData* fontData = fontFamily.getData(style);
