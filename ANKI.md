@@ -27,7 +27,7 @@ Card content is centered both vertically and horizontally on screen.
 |--------|-------------|------------|
 | 4 front buttons | Flip card | Grade: Again / Hard / Good / Easy (left to right) |
 | Upper rocker | Back to deck summary | Back to front side |
-| Lower rocker (short) | Cycle font size (S/M/L/XL) | Cycle font size |
+| Lower rocker (short) | Cycle font size (M/L/XL) | Cycle font size |
 | Lower rocker (long) | Toggle portrait / landscape | Toggle portrait / landscape |
 
 ### Other Screens
@@ -45,16 +45,26 @@ The device has no reliable real-time clock, so the SM-2 algorithm uses **session
 
 If you review daily, sessions approximate days. Review twice a day and progression is faster.
 
+### Interval Scheduling
+
+New cards are bootstrapped with fixed intervals for the first two reviews, then the exponential multiplier takes over:
+
+| Repetition | Interval |
+|------------|----------|
+| 0 (first review) | 1 session |
+| 1 (second review) | 6 sessions |
+| 2+ | `prev_interval × EF × grade_multiplier` |
+
 ### Grading
 
-| Button | Grade | Effect |
-|--------|-------|--------|
-| Left   | Again | Reset to 0 reps, re-queue in current session, EF -0.20 |
-| Mid-L  | Hard  | Interval x0.7, EF -0.05 |
-| Mid-R  | Good  | Normal interval growth, EF unchanged |
-| Right  | Easy  | Interval x1.3, EF +0.10 |
+| Button | Grade | Ease Factor | Interval (rep ≥ 2) |
+|--------|-------|-------------|---------------------|
+| Left   | Again | EF − 0.20 (min 1.3) | reset to 0, re-queue this session |
+| Mid-L  | Hard  | EF − 0.05 (min 1.3) | `prev × EF × 0.7` |
+| Mid-R  | Good  | unchanged           | `prev × EF` |
+| Right  | Easy  | EF + 0.10           | `prev × (EF + 0.10) × 1.3` |
 
-Easiness factor minimum: 1.3. New cards start at EF 2.5.
+New cards start at EF 2.5. With the default EF, Good gives a 2.5× interval increase per review, Easy gives ~3.4× (2.6 × 1.3). Multiple Easy ratings in a row compound: the EF grows each time, making subsequent intervals progressively longer.
 
 ## CSV Format
 
@@ -98,7 +108,7 @@ AnkiActivity follows the same patterns as TxtReaderActivity / MdReaderActivity:
 
 - FreeRTOS display task with semaphore-protected rendering
 - Orientation support (Portrait / Landscape CCW), toggled via lower rocker long press
-- Independent font size (S/M/L/XL), cycled via lower rocker short press
+- Independent font size (M/L/XL), cycled via lower rocker short press
 - Anti-aliasing pass for grayscale font rendering
 - Card text rendered through MarkdownParser with center alignment
 - Vertical centering when card content fits on a single page

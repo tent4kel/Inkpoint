@@ -1,6 +1,7 @@
 #include "AnkiActivity.h"
 
 #include <GfxRenderer.h>
+#include <sstream>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <MarkdownParser.h>
@@ -99,7 +100,7 @@ void AnkiActivity::loadAnkiSettings() {
     }
   }
 
-  if (ankiFontSize > 3) ankiFontSize = 1;
+  if (ankiFontSize < 1 || ankiFontSize > 3) ankiFontSize = 1;
 }
 
 void AnkiActivity::saveAnkiSettings() {
@@ -140,7 +141,7 @@ void AnkiActivity::applyOrientation() {
 }
 
 void AnkiActivity::cycleFontSize() {
-  ankiFontSize = (ankiFontSize + 1) % 4;
+  ankiFontSize = (ankiFontSize % 3) + 1;  // cycles 1 → 2 → 3 → 1, skipping 0 (too small)
   cachedFontId = getFontIdForAnkiSize();
   saveAnkiSettings();
   LOG_DBG("ANK", "Font size changed to %d", ankiFontSize);
@@ -285,7 +286,13 @@ void AnkiActivity::loop() {
   switch (state) {
     case State::DECK_SUMMARY: {
       if (inputGuard) {
-        inputGuard = false;
+        // Hold until all front buttons are physically released (isPressed = level, not edge)
+        if (!mappedInput.isPressed(MappedInputManager::Button::Back) &&
+            !mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+            !mappedInput.isPressed(MappedInputManager::Button::Left) &&
+            !mappedInput.isPressed(MappedInputManager::Button::Right)) {
+          inputGuard = false;
+        }
         break;
       }
       // Back button or upper rocker exits
@@ -493,15 +500,40 @@ void AnkiActivity::renderDeckSummary() {
   }
 
   const size_t dueCount = deck->getDueCount();
+  const int screenW = renderer.getScreenWidth();
+
+  // Word-wrap the deck title to fit within screen width
+  std::vector<std::string> titleLines;
+  {
+    const int maxTitleWidth = screenW - 40;
+    std::istringstream stream(deck->getTitle());
+    std::string word, currentLine;
+    while (stream >> word) {
+      std::string test = currentLine.empty() ? word : currentLine + " " + word;
+      if (!currentLine.empty() &&
+          renderer.getTextAdvanceX(cachedFontId, test.c_str(), EpdFontFamily::BOLD) > maxTitleWidth) {
+        titleLines.push_back(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = test;
+      }
+    }
+    if (!currentLine.empty()) titleLines.push_back(currentLine);
+    if (titleLines.empty()) titleLines.push_back(deck->getTitle());
+  }
+  const int titleLineCount = static_cast<int>(titleLines.size());
 
   // Vertically center the content block
   const int numLines = 6 + (reviewCompleted && dueCount == 0 ? 1 : 0);
-  const int blockHeight = lineH * numLines + 8 * 4 + lineH * 2;
+  const int blockHeight = lineH * (numLines + titleLineCount - 1) + 8 * 4 + lineH * 2;
   int y = (screenH - blockHeight) / 2;
 
-  // Deck title
-  renderer.drawCenteredText(cachedFontId, y, deck->getTitle().c_str(), true, EpdFontFamily::BOLD);
-  y += lineH * 2;
+  // Deck title (wrapped)
+  for (const auto& line : titleLines) {
+    renderer.drawCenteredText(cachedFontId, y, line.c_str(), true, EpdFontFamily::BOLD);
+    y += lineH;
+  }
+  y += lineH;  // extra gap after title
 
   // Stats
   char buf[64];
