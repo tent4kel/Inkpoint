@@ -54,7 +54,7 @@ class MarkdownParser {
   BlockStyle headerBlockStyle(int level) const;
   BlockStyle blockquoteBlockStyle() const;
   BlockStyle paragraphBlockStyle() const;
-  BlockStyle listItemBlockStyle(int level) const;
+  BlockStyle listItemBlockStyle(int level, const std::string& prefix) const;
 
   friend void mdTokenCallback(const md_token* token, void* user_data);
 
