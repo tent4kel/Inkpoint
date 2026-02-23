@@ -35,8 +35,9 @@ typedef enum {
   MD_TOKEN_BLOCKQUOTE_START,
   MD_TOKEN_BLOCKQUOTE_END,
   MD_TOKEN_HORIZONTAL_RULE,
-  MD_TOKEN_PARAGRAPH_BREAK, // blank line / paragraph boundary
-  MD_TOKEN_LINE_BREAK,      // end of a non-blank line within a block
+  MD_TOKEN_PARAGRAPH_BREAK,    // blank line / paragraph boundary
+  MD_TOKEN_LINE_BREAK,         // end of a non-blank line within a block (soft wrap)
+  MD_TOKEN_HARD_LINE_BREAK,    // line ending with 2+ trailing spaces (forces new line, no paragraph spacing)
   MD_TOKEN_CODE_BLOCK_START,
   MD_TOKEN_CODE_BLOCK_END,
   MD_TOKEN_CODE_BLOCK_LINE,

@@ -86,12 +86,24 @@ static size_t strip_trailing_hashes(const char* text, size_t len) {
   return len;
 }
 
+/* Check for hard line break (2+ trailing spaces). Returns stripped length, sets *hard_break. */
+static size_t check_hard_break(const char* text, size_t len, int* hard_break) {
+  *hard_break = (len >= 2 && text[len - 1] == ' ' && text[len - 2] == ' ') ? 1 : 0;
+  if (*hard_break) {
+    while (len > 0 && text[len - 1] == ' ') len--;
+  }
+  return len;
+}
+
 /* Check if a line is a list item. Returns the content offset or 0 if not a list.
  * Sets *ordered to 1 for ordered lists, 0 for unordered.
  * Sets *indent_level based on leading whitespace. */
-static size_t is_list_item(const char* line, size_t len, int* ordered, int* indent_level) {
+static size_t is_list_item(const char* line, size_t len, int* ordered, int* indent_level,
+                           const char** num_text, size_t* num_len) {
   size_t i = skip_spaces(line, len);
   *indent_level = (int)(i / 2); /* 2 spaces = 1 indent level */
+  *num_text = NULL;
+  *num_len = 0;
 
   if (i >= len) return 0;
 
@@ -106,6 +118,8 @@ static size_t is_list_item(const char* line, size_t len, int* ordered, int* inde
   while (i < len && line[i] >= '0' && line[i] <= '9') i++;
   if (i > num_start && i < len && (line[i] == '.' || line[i] == ')') && i + 1 < len && line[i + 1] == ' ') {
     *ordered = 1;
+    *num_text = line + num_start;
+    *num_len = i - num_start;
     return i + 2;
   }
 
@@ -338,10 +352,12 @@ void md_parse_line(md_parser_state* state, const char* line, size_t len) {
 
   /* List item */
   int ordered = 0, indent_level = 0;
-  size_t list_content_offset = is_list_item(content, content_len, &ordered, &indent_level);
+  const char* num_text = NULL;
+  size_t num_len = 0;
+  size_t list_content_offset = is_list_item(content, content_len, &ordered, &indent_level, &num_text, &num_len);
   if (list_content_offset > 0) {
     if (ordered) {
-      emit(state, MD_TOKEN_ORDERED_ITEM, NULL, 0, indent_level);
+      emit(state, MD_TOKEN_ORDERED_ITEM, num_text, num_len, indent_level);
     } else {
       emit(state, MD_TOKEN_LIST_ITEM, NULL, 0, indent_level);
     }
@@ -350,9 +366,11 @@ void md_parse_line(md_parser_state* state, const char* line, size_t len) {
     return;
   }
 
-  /* Normal text line */
-  parse_inline(state, content, content_len);
-  emit_simple(state, MD_TOKEN_LINE_BREAK);
+  /* Normal text line — detect hard line break (2+ trailing spaces) */
+  int hard_break = 0;
+  size_t inline_len = check_hard_break(content, content_len, &hard_break);
+  parse_inline(state, content, inline_len);
+  emit_simple(state, hard_break ? MD_TOKEN_HARD_LINE_BREAK : MD_TOKEN_LINE_BREAK);
 }
 
 void md_parser_finish(md_parser_state* state) {

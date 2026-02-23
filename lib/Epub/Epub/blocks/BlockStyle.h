@@ -20,6 +20,7 @@ struct BlockStyle {
   int16_t paddingLeft = 0;    // treated same as margin for rendering
   int16_t paddingRight = 0;   // treated same as margin for rendering
   int16_t textIndent = 0;
+  int16_t hangingIndent = 0;       // x-offset applied to all lines after the first (list items)
   bool textIndentDefined = false;  // true if text-indent was explicitly set in CSS
   bool textAlignDefined = false;   // true if text-align was explicitly set in CSS
 
@@ -42,6 +43,8 @@ struct BlockStyle {
     combinedBlockStyle.paddingBottom = static_cast<int16_t>(child.paddingBottom + paddingBottom);
     combinedBlockStyle.paddingLeft = static_cast<int16_t>(child.paddingLeft + paddingLeft);
     combinedBlockStyle.paddingRight = static_cast<int16_t>(child.paddingRight + paddingRight);
+    // Hanging indent: use child's if set, else inherit parent's
+    combinedBlockStyle.hangingIndent = child.hangingIndent != 0 ? child.hangingIndent : hangingIndent;
     // Text indent: use child's if defined
     if (child.textIndentDefined) {
       combinedBlockStyle.textIndent = child.textIndent;

@@ -10,7 +10,8 @@
 
 enum PageElementTag : uint8_t {
   TAG_PageLine = 1,
-  TAG_PageImage = 2,  // New tag
+  TAG_PageImage = 2,
+  TAG_PageSeparator = 3,
 };
 
 // represents something that has been added to a page
@@ -49,6 +50,19 @@ class PageImage final : public PageElement {
   bool serialize(FsFile& file) override;
   PageElementTag getTag() const override { return TAG_PageImage; }
   static std::unique_ptr<PageImage> deserialize(FsFile& file);
+};
+
+// A centered horizontal rule drawn as a filled 1px rectangle
+class PageSeparator final : public PageElement {
+  uint16_t width;
+
+ public:
+  PageSeparator(const int16_t xPos, const int16_t yPos, const uint16_t width)
+      : PageElement(xPos, yPos), width(width) {}
+  void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) override;
+  bool serialize(FsFile& file) override;
+  PageElementTag getTag() const override { return TAG_PageSeparator; }
+  static std::unique_ptr<PageSeparator> deserialize(FsFile& file);
 };
 
 class Page {

@@ -68,11 +68,13 @@ BlockStyle MarkdownParser::paragraphBlockStyle() const {
   return style;
 }
 
-BlockStyle MarkdownParser::listItemBlockStyle(int level) const {
+BlockStyle MarkdownParser::listItemBlockStyle(int level, const std::string& prefix) const {
   BlockStyle style;
   style.alignment = CssTextAlign::Left;
   style.textAlignDefined = true;
-  style.marginLeft = static_cast<int16_t>(15 * (level + 1));
+  const int16_t margin = static_cast<int16_t>(15 * (level + 1));
+  style.marginLeft = margin;
+  style.hangingIndent = static_cast<int16_t>(margin + renderer.getTextWidth(fontId, prefix.c_str()));
   return style;
 }
 
@@ -332,15 +334,21 @@ void mdTokenCallback(const md_token* token, void* user_data) {
       break;
 
     case MD_TOKEN_LIST_ITEM:
-      self->startNewTextBlock(self->listItemBlockStyle(token->level));
+      self->startNewTextBlock(self->listItemBlockStyle(token->level, "\xe2\x80\xa2 "));  // "• "
       if (self->currentTextBlock) {
         self->currentTextBlock->addWord("\xe2\x80\xa2", EpdFontFamily::REGULAR);  // bullet •
       }
       break;
 
-    case MD_TOKEN_ORDERED_ITEM:
-      self->startNewTextBlock(self->listItemBlockStyle(token->level));
+    case MD_TOKEN_ORDERED_ITEM: {
+      std::string number(token->text, token->text_len);
+      std::string prefix = number + ". ";
+      self->startNewTextBlock(self->listItemBlockStyle(token->level, prefix));
+      if (self->currentTextBlock) {
+        self->currentTextBlock->addWord(number + ".", EpdFontFamily::REGULAR);
+      }
       break;
+    }
 
     case MD_TOKEN_BLOCKQUOTE_START:
       self->inBlockquote = true;
@@ -351,26 +359,47 @@ void mdTokenCallback(const md_token* token, void* user_data) {
       self->inBlockquote = false;
       break;
 
-    case MD_TOKEN_HORIZONTAL_RULE:
-      // Emit as a visual separator — we use a line of dashes
-      self->startNewTextBlock(self->paragraphBlockStyle());
-      if (self->currentTextBlock) {
-        self->currentTextBlock->addWord("\xe2\x80\x94\xe2\x80\x94\xe2\x80\x94", EpdFontFamily::REGULAR);  // ———
+    case MD_TOKEN_HORIZONTAL_RULE: {
+      self->makePages();  // flush pending text
+      if (!self->currentPage) {
+        self->currentPage.reset(new Page());
+        self->currentPageNextY = 0;
       }
+      const int lineHeight = self->renderer.getLineHeight(self->fontId);
+      const int yMid = self->currentPageNextY + lineHeight / 2;
+      const int sepWidth = self->viewportWidth * 80 / 100;
+      const int sepX = (self->viewportWidth - sepWidth) / 2;
+      self->currentPage->elements.push_back(
+          std::make_shared<PageSeparator>(sepX, yMid, sepWidth));
+      self->currentPageNextY += lineHeight;
       break;
+    }
 
-    case MD_TOKEN_PARAGRAPH_BREAK:
-      // Start a new text block for the new paragraph
+    case MD_TOKEN_PARAGRAPH_BREAK: {
+      // Flush current block, add half-line spacing, then start new paragraph
+      bool hadContent = self->currentTextBlock && !self->currentTextBlock->isEmpty();
       if (self->inBlockquote) {
         self->startNewTextBlock(self->blockquoteBlockStyle());
       } else {
         self->startNewTextBlock(self->paragraphBlockStyle());
       }
+      if (hadContent) {
+        self->currentPageNextY += self->renderer.getLineHeight(self->fontId) / 2;
+      }
       break;
+    }
 
     case MD_TOKEN_LINE_BREAK:
-      // Within a paragraph, a line break is just whitespace continuation
-      // (soft wrap). The ParsedText layout handles wrapping.
+      // Soft line break — whitespace continuation, ParsedText handles wrapping.
+      break;
+
+    case MD_TOKEN_HARD_LINE_BREAK:
+      // Hard line break (trailing spaces) — force new line, same block style, no paragraph spacing.
+      if (self->currentTextBlock) {
+        BlockStyle style = self->currentTextBlock->getBlockStyle();
+        self->makePages();
+        self->startNewTextBlock(style);
+      }
       break;
 
     case MD_TOKEN_CODE_BLOCK_START:
