@@ -14,6 +14,7 @@
 #include "Battery.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "InstapaperCredentialStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
@@ -29,6 +30,9 @@ int HomeActivity::getMenuItemCount() const {
     count++;
   }
   if (onAnkiExplorerOpen) {
+    count++;
+  }
+  if (hasInstapaper) {
     count++;
   }
   return count;
@@ -117,6 +121,7 @@ void HomeActivity::onEnter() {
 
   // Check if OPDS browser URL is configured
   hasOpdsUrl = strlen(SETTINGS.opdsServerUrl) > 0;
+  hasInstapaper = INSTAPAPER_STORE.hasCredentials() || INSTAPAPER_STORE.hasLoginCredentials();
 
   selectorIndex = 0;
 
@@ -197,6 +202,7 @@ void HomeActivity::loop() {
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
     const int ankiExplorerIdx = onAnkiExplorerOpen ? idx++ : -1;
+    const int instapaperIdx = hasInstapaper ? idx++ : -1;
     const int fileTransferIdx = idx++;
     const int settingsIdx = idx;
 
@@ -210,6 +216,8 @@ void HomeActivity::loop() {
       onOpdsBrowserOpen();
     } else if (menuSelectedIndex == ankiExplorerIdx) {
       if (onAnkiExplorerOpen) onAnkiExplorerOpen();
+    } else if (menuSelectedIndex == instapaperIdx) {
+      if (onInstapaperOpen) onInstapaperOpen();
     } else if (menuSelectedIndex == fileTransferIdx) {
       onFileTransferOpen();
     } else if (menuSelectedIndex == settingsIdx) {
@@ -246,6 +254,11 @@ void HomeActivity::render(Activity::RenderLock&&) {
   if (onAnkiExplorerOpen) {
     menuItems.insert(menuItems.begin() + insertPos, "Flashcards");
     menuIcons.insert(menuIcons.begin() + insertPos, Flashcards);
+    insertPos++;
+  }
+  if (hasInstapaper) {
+    menuItems.insert(menuItems.begin() + insertPos, "Instapaper");
+    menuIcons.insert(menuIcons.begin() + insertPos, Newspaper);
     insertPos++;
   }
 

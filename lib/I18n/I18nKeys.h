@@ -358,6 +358,10 @@ enum class StrId : uint16_t {
   STR_GOAL_20,
   STR_GOAL_30,
   STR_GOAL_50,
+  STR_INSTAPAPER,
+  STR_INSTAPAPER_EMAIL,
+  STR_INSTAPAPER_PASSWORD,
+  STR_SWITCH_FIRMWARE,
   // Sentinel - must be last
   _COUNT
 };

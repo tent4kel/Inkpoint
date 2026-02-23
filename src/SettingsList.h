@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
+#include "InstapaperCredentialStore.h"
 #include "KOReaderCredentialStore.h"
 #include "activities/settings/SettingsActivity.h"
 
@@ -116,6 +117,22 @@ inline std::vector<SettingInfo> getSettingsList() {
             KOREADER_STORE.saveToFile();
           },
           "koMatchMethod", StrId::STR_KOREADER_SYNC),
+
+      // --- Instapaper (web-only, uses InstapaperCredentialStore) ---
+      SettingInfo::DynamicString(
+          StrId::STR_INSTAPAPER_EMAIL, [] { return INSTAPAPER_STORE.getUsername(); },
+          [](const std::string& v) {
+            INSTAPAPER_STORE.setUsername(v);
+            INSTAPAPER_STORE.saveToFile();
+          },
+          "instapaperEmail", StrId::STR_INSTAPAPER),
+      SettingInfo::DynamicString(
+          StrId::STR_INSTAPAPER_PASSWORD, [] { return INSTAPAPER_STORE.getPassword(); },
+          [](const std::string& v) {
+            INSTAPAPER_STORE.setPassword(v);
+            INSTAPAPER_STORE.saveToFile();
+          },
+          "instapaperPassword", StrId::STR_INSTAPAPER),
 
       // --- OPDS Browser (web-only, uses CrossPointSettings char arrays) ---
       SettingInfo::String(StrId::STR_OPDS_SERVER_URL, SETTINGS.opdsServerUrl, sizeof(SETTINGS.opdsServerUrl),
