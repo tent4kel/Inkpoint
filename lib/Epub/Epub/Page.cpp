@@ -1,5 +1,6 @@
 #include "Page.h"
 
+#include <GfxRenderer.h>
 #include <Logging.h>
 #include <Serialization.h>
 
@@ -48,6 +49,26 @@ std::unique_ptr<PageImage> PageImage::deserialize(FsFile& file) {
   return std::unique_ptr<PageImage>(new PageImage(std::move(ib), xPos, yPos));
 }
 
+void PageSeparator::render(GfxRenderer& renderer, const int /*fontId*/, const int xOffset, const int yOffset) {
+  renderer.fillRect(xPos + xOffset, yPos + yOffset, width, 3);
+}
+
+bool PageSeparator::serialize(FsFile& file) {
+  serialization::writePod(file, xPos);
+  serialization::writePod(file, yPos);
+  serialization::writePod(file, width);
+  return true;
+}
+
+std::unique_ptr<PageSeparator> PageSeparator::deserialize(FsFile& file) {
+  int16_t xPos, yPos;
+  uint16_t width;
+  serialization::readPod(file, xPos);
+  serialization::readPod(file, yPos);
+  serialization::readPod(file, width);
+  return std::unique_ptr<PageSeparator>(new PageSeparator(xPos, yPos, width));
+}
+
 void Page::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) const {
   for (auto& element : elements) {
     element->render(renderer, fontId, xOffset, yOffset);
@@ -86,6 +107,9 @@ std::unique_ptr<Page> Page::deserialize(FsFile& file) {
     } else if (tag == TAG_PageImage) {
       auto pi = PageImage::deserialize(file);
       page->elements.push_back(std::move(pi));
+    } else if (tag == TAG_PageSeparator) {
+      auto ps = PageSeparator::deserialize(file);
+      page->elements.push_back(std::move(ps));
     } else {
       LOG_ERR("PGE", "Deserialization failed: Unknown tag %u", tag);
       return nullptr;
