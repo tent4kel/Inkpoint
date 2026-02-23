@@ -284,6 +284,10 @@ void AnkiActivity::loop() {
 
   switch (state) {
     case State::DECK_SUMMARY: {
+      if (inputGuard) {
+        inputGuard = false;
+        break;
+      }
       // Back button or upper rocker exits
       if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
           mappedInput.wasReleased(MappedInputManager::Button::Up)) {
@@ -363,6 +367,7 @@ void AnkiActivity::loop() {
           reviewCompleted = true;
           state = State::DECK_SUMMARY;
           cardPages.clear();
+          inputGuard = true;  // Prevent rating button release from firing Confirm in DECK_SUMMARY
         }
         updateRequired = true;
       }
