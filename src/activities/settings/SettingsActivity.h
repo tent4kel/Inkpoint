@@ -22,6 +22,7 @@ enum class SettingAction {
   ClearCache,
   CheckForUpdates,
   Language,
+  SwitchFirmware,
 };
 
 struct SettingInfo {
