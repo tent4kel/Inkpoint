@@ -48,6 +48,7 @@ class AnkiActivity final : public Activity {
   bool ankiSwapFrontBack = false;  // Show back side first when true
   bool longPressHandled = false;  // Prevent long press re-trigger
   bool reviewCompleted = false;   // True after completing a review round
+  bool inputGuard = false;        // Suppress DECK_SUMMARY input for one frame after grading last card
   int cachedFontId = 0;
   int cachedScreenMargin = 0;
 
