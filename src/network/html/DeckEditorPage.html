@@ -6,13 +6,41 @@
   <title>CrossPoint - Deck Editor</title>
   <style>
     * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      overflow: hidden; /* body never scrolls; #view-list or #view-picker does */
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      margin: 0;
+    }
+    /* Picker view scrolls normally inside a centered container */
+    #view-picker {
       max-width: 900px;
       margin: 0 auto;
       padding: 20px;
-      background: #f0f2f5;
-      color: #333;
+      height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    /* List view fills the whole viewport and owns the scroll.
+       iOS Safari sticky/fixed elements work correctly when anchored to an
+       explicit overflow container rather than the document body. */
+    #view-list {
+      position: fixed;
+      inset: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: none;
+    }
+    /* Centered content wrapper inside the scroll container */
+    #list-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 16px 10px 20px;
+      position: relative; /* sticky children anchor here */
     }
     .nav-links { margin: 0 0 16px; }
     .nav-links a {
@@ -21,7 +49,7 @@
       background: #3498db;
       color: white;
       text-decoration: none;
-      border-radius: 4px;
+      border-radius: 16px;
       margin-right: 8px;
       font-size: 0.9em;
     }
@@ -48,7 +76,7 @@
     #dirty-overlay[hidden] { display: none; }
     #dirty-dialog {
       background: white;
-      border-radius: 14px;
+      border-radius: 16px;
       padding: 24px 20px 20px;
       max-width: 320px;
       width: 90%;
@@ -71,6 +99,52 @@
     .dirty-discard { background: #e74c3c; color: white; }
     .dirty-save    { background: #3498db; color: white; }
 
+    /* ── Text input dialog ───────────────────────────────────────── */
+    #input-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 400;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #input-overlay[hidden] { display: none; }
+    #input-dialog {
+      background: white;
+      border-radius: 16px;
+      padding: 24px 20px 20px;
+      max-width: 320px;
+      width: 90%;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    }
+    #input-dialog h3 { margin: 0 0 14px; font-size: 1.1em; color: #2c3e50; }
+    #input-field {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: inherit;
+      color: #2c3e50;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+    }
+    #input-field:focus { outline: none; border-color: #3498db; }
+    .input-btns { display: flex; gap: 8px; }
+    .input-btns button {
+      flex: 1;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.88em;
+      font-weight: 500;
+      font-family: inherit;
+    }
+    .input-cancel  { background: #ecf0f1; color: #555; }
+    .input-confirm { background: #3498db; color: white; }
+
     /* ── Deck picker ──────────────────────────────────────────────── */
     h1 {
       color: #2c3e50;
@@ -81,7 +155,7 @@
     .deck-item {
       padding: 12px 16px;
       background: white;
-      border-radius: 8px;
+      border-radius: 16px;
       margin: 8px 0;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       cursor: pointer;
@@ -109,33 +183,52 @@
       color: #2c3e50;
       margin: 0 0 4px;
       line-height: 1.2;
-      transform-origin: top left;
+      transform-origin: top center;
       will-change: transform, opacity;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      text-align: center;
     }
 
     /* ── Sticky 2×2 action grid ───────────────────────────────────── */
     .action-grid {
+      position: -webkit-sticky;
       position: sticky;
       top: 0;
       z-index: 200;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
-      padding: 10px 0 14px;
-      background: linear-gradient(to bottom, #f0f2f5 70%, transparent);
+      padding: 10px 0 8px;
+      background: #f0f2f5; /* solid — no transparent zone for cards to bleed through */
+    }
+    /* Fade out below the action bar as a non-layout overflow — keeps the
+       visual softening without the transparent-background scroll artifact. */
+    .action-grid::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 0; right: 0;
+      height: 14px;
+      background: linear-gradient(to bottom, #f0f2f5, transparent);
+      pointer-events: none;
     }
 
     /* ── Cards ────────────────────────────────────────────────────── */
-    .cards-container { display: flex; flex-direction: column; gap: 10px; }
+    .cards-container { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
 
     .card-wrap {
       position: relative;
-      border-radius: 12px;
+      border-radius: 16px;
       overflow: hidden;
       box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+      /* Promote the whole card (face + action buttons) to a single GPU layer.
+         Without this, .card-face (will-change:transform) is composited
+         separately from its .action-dup/.action-del siblings, so during fast
+         scroll the layers move at different rates and the buttons bleed through. */
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
     }
     .action-dup, .action-del {
       position: absolute;
@@ -163,11 +256,10 @@
     .card-face {
       display: flex;
       background: white;
-      border-radius: 12px;
+      border-radius: 16px;
       position: relative;
       z-index: 1;
       min-height: 64px;
-      will-change: transform;
     }
     .card-half {
       flex: 1;
@@ -176,6 +268,35 @@
       cursor: text;
     }
     .card-half + .card-half { border-left: 1px solid #e5e5e5; }
+
+    /* ── Desktop card actions (always visible, toned down) ────────── */
+    /* Hidden on touch devices — swipe handles dup/delete there.
+       Shown on pointer devices via (hover: hover) media query. */
+    /* ── Desktop margin action buttons ────────────────────────────── */
+    .card-outer { position: relative; }
+    .margin-btn { display: none; }
+    @media (hover: hover) {
+      #list-inner { padding: 16px 44px 20px; }
+      .margin-btn {
+        display: flex;
+        position: absolute;
+        left: calc(100% + 7px);
+        width: 30px; height: 30px;
+        border: none; border-radius: 8px;
+        background: transparent;
+        cursor: pointer;
+        font-size: 10px; line-height: 1;
+        color: #c8c8c8;
+        align-items: center; justify-content: center;
+        transition: color 0.15s, background 0.15s;
+        padding: 0; font-family: inherit;
+        user-select: none;
+      }
+      .margin-dup { top: calc(50% - 32px); }
+      .margin-del { top: calc(50% + 2px);  }
+      .margin-dup:hover { color: #27ae60; background: #edf7ef; }
+      .margin-del:hover { color: #e74c3c; background: #fdf0f0; }
+    }
 
     /* ── Markdown preview ─────────────────────────────────────────── */
     .card-preview {
@@ -210,12 +331,12 @@
     /* ── Raw textarea (editing) ───────────────────────────────────── */
     /*
      * iOS Safari form-assistant hack:
-     * The toolbar's prev/next arrows skip elements with display:none or
-     * zero bounding-box. We keep textareas display:block at all times but
-     * visually hidden (opacity:0, height:0 as CSS baseline). renderCards()
-     * calls autoResize() *after* DOM insertion so scrollHeight is non-zero,
-     * giving each textarea a real pixel height that Safari can discover.
-     * The focus handler below then enters editing mode on navigation.
+     * The toolbar's prev/next arrows skip elements with zero bounding-box.
+     * After DOM insertion each textarea is set to height:1px — invisible
+     * (opacity:0, overflow:hidden) but discoverable by iOS.
+     * Full autoResize runs on focus/input; blur resets style.height to ''
+     * so CSS height:0 takes over and the textarea contributes no layout space.
+     * (iOS does not forget textareas after a later height reset.)
      */
     .card-edit {
       display: block;
@@ -227,7 +348,7 @@
       outline: none;
       resize: none;
       font-family: inherit;
-      font-size: 0.95em;
+      font-size: 16px;
       line-height: 1.55;
       background: transparent;
       padding: 0;
@@ -240,7 +361,7 @@
     /* ── Action buttons ───────────────────────────────────────────── */
     .bar-btn {
       padding: 11px 14px;
-      border-radius: 12px;
+      border-radius: 16px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.10);
       border: none;
       cursor: pointer;
@@ -255,8 +376,10 @@
     .bar-btn:disabled { background: #95a5a6 !important; cursor: not-allowed; }
     .bar-back { background: #7f8c8d; }
     .bar-back:hover { background: #6c7a7d; }
-    .bar-save { background: #3498db; }
+    .bar-save { background: #3498db; transition: background 0.25s; }
     .bar-save:hover { background: #2980b9; }
+    .bar-save.saved { background: #27ae60; }
+    .bar-save.saved:hover { background: #219a52; }
     .bar-add  { background: #27ae60; }
     .bar-add:hover  { background: #219a52; }
 
@@ -272,11 +395,11 @@
     #search-input {
       width: 100%;
       padding: 11px 11px 11px 34px;
-      border-radius: 12px;
+      border-radius: 16px;
       border: none;
       box-shadow: 0 2px 8px rgba(0,0,0,0.10);
       background: white;
-      font-size: 0.88em;
+      font-size: 16px;
       font-family: inherit;
       color: #2c3e50;
     }
@@ -316,7 +439,7 @@
       width: 100%;
       min-height: 420px;
       font-family: "SFMono-Regular", Consolas, monospace;
-      font-size: 0.8em;
+      font-size: 16px;
       line-height: 1.55;
       color: #2c3e50;
       background: white;
@@ -341,9 +464,10 @@
 
     /* ── Bottom fade overlay ──────────────────────────────────────── */
     #bottom-fade {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
+      position: sticky;
+      bottom: 0;
       height: 64px;
+      margin-top: -64px;       /* overlap last card without pushing layout */
       background: linear-gradient(to bottom, transparent, #f0f2f5);
       pointer-events: none;
       z-index: 150;
@@ -363,10 +487,9 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 500px) {
-      body { padding: 10px; }
       .action-grid { gap: 6px; }
       .bar-btn { padding: 10px 10px; font-size: 0.82em; }
-      #search-input { padding: 10px 10px 10px 30px; font-size: 0.82em; }
+      #search-input { padding: 10px 10px 10px 30px; } /* keep 16px — no override */
     }
   </style>
 </head>
@@ -385,6 +508,18 @@
   </div>
 </div>
 
+<!-- ── Text input dialog ─────────────────────────────────────────────── -->
+<div id="input-overlay" hidden>
+  <div id="input-dialog">
+    <h3 id="input-title">Enter name</h3>
+    <input id="input-field" type="text" autocomplete="off" />
+    <div class="input-btns">
+      <button class="input-cancel"  id="input-cancel">Cancel</button>
+      <button class="input-confirm" id="input-confirm">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── View: Deck Picker ─────────────────────────────────────────────── -->
 <div id="view-picker">
   <h1>Anki Deck Editor</h1>
@@ -395,13 +530,14 @@
   </div>
   <div id="picker-banner" class="message"></div>
   <div style="margin:12px 0;">
-    <button onclick="newDeck()" style="padding:8px 16px;background:#27ae60;color:white;border:none;border-radius:4px;cursor:pointer;font-size:0.9em;font-family:inherit;">+ New Deck</button>
+    <button onclick="newDeck()" style="padding:8px 16px;background:#27ae60;color:white;border:none;border-radius:16px;cursor:pointer;font-size:0.9em;font-family:inherit;">+ New Deck</button>
   </div>
   <div id="deck-list"><span class="loader"></span> Loading&hellip;</div>
 </div>
 
 <!-- ── View: Card List ───────────────────────────────────────────────── -->
 <div id="view-list" hidden>
+<div id="list-inner">
   <div id="deck-title-large"></div>
   <div class="action-grid" id="action-grid">
     <button class="bar-btn bar-back raw-hidden" id="back-btn">&#8592; Back</button>
@@ -433,21 +569,10 @@
   <div id="hotkey-hints">
     <div class="fmt">**bold** &nbsp; *italic* &nbsp; ***b+i*** &nbsp; `code` &nbsp; # heading &nbsp; - list &nbsp; &gt; quote &nbsp; ---</div>
     <div class="fmt">blank line = paragraph &nbsp;&nbsp; &ldquo;two spaces&rdquo;+&crarr; = line break</div>
-    <div><span id="hint-mods"></span><a id="raw-toggle" href="#" style="color:#ccc;text-decoration:none;">&#9998; raw CSV</a></div>
+    <div><span id="hint-mods"></span><a id="raw-toggle" href="#" style="color:#7787cb;text-decoration:none;">&#9998; raw CSV</a></div>
   </div>
-</div>
-
-<div id="bottom-fade" hidden></div>
-
-<!-- ── View: Card Editor (Phase 2 stub) ─────────────────────────────── -->
-<div id="view-editor" hidden>
-  <h2>Edit Card</h2>
-  <label>Front</label>
-  <textarea id="editor-front" rows="6" style="width:100%;"></textarea>
-  <div id="preview-front"></div>
-  <label>Back</label>
-  <textarea id="editor-back" rows="6" style="width:100%;"></textarea>
-  <div id="preview-back"></div>
+  <div id="bottom-fade" hidden></div>
+</div> <!-- #list-inner -->
 </div>
 
 
@@ -470,18 +595,20 @@
     setTimeout(function() { _vpMeta.content = 'width=device-width, initial-scale=1'; }, 50);
   }
 
+  // ── Scroll container (owns scrolling for the card list view) ─────────────
+  var listViewEl = document.getElementById('view-list');
+
   // ── Collapsing title on scroll ────────────────────────────────────────────
   var titleEl = document.getElementById('deck-title-large');
   var TITLE_COLLAPSE_PX = 80;
 
   function updateTitleScale() {
-    if (document.getElementById('view-list').hidden) return;
-    var t = Math.min(1, Math.max(0, window.scrollY / TITLE_COLLAPSE_PX));
+    var t = Math.min(1, Math.max(0, listViewEl.scrollTop / TITLE_COLLAPSE_PX));
     titleEl.style.transform = 'scale(' + (1 - t * 0.38) + ')';
     titleEl.style.opacity   = (1 - t).toString();
   }
 
-  window.addEventListener('scroll', updateTitleScale, { passive: true });
+  listViewEl.addEventListener('scroll', updateTitleScale, { passive: true });
 
   // ── Minimal Markdown renderer ─────────────────────────────────────────────
   function md(src, highlight) {
@@ -619,10 +746,12 @@
       legacyCopy(text); flash();
     }
   }
+  var _bannerTimers = {};
   function showBanner(id,msg,err){
     var el=document.getElementById(id);
     el.textContent=msg; el.className='message '+(err?'error':'success'); el.style.display='block';
-    setTimeout(function(){el.style.display='none';},3000);
+    if (_bannerTimers[id]) clearTimeout(_bannerTimers[id]);
+    _bannerTimers[id] = setTimeout(function(){ el.style.display='none'; delete _bannerTimers[id]; },3000);
   }
   function autoResize(ta){ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';}
 
@@ -655,6 +784,41 @@
   });
   document.getElementById('dirty-save').addEventListener('click', function() {
     var cb = _dirtyCb; hideDirtyDialog(); if (cb) cb('save');
+  });
+
+  // ── Text input dialog ─────────────────────────────────────────────────────
+  var _inputCb = null;
+  var _inputOverlay = document.getElementById('input-overlay');
+  var _inputField   = document.getElementById('input-field');
+  var _inputTitle   = document.getElementById('input-title');
+
+  function showInputDialog(title, placeholder, defaultValue, cb) {
+    _inputTitle.textContent   = title;
+    _inputField.placeholder   = placeholder || '';
+    _inputField.value         = defaultValue || '';
+    _inputCb = cb;
+    _inputOverlay.hidden = false;
+    setTimeout(function() { _inputField.focus(); _inputField.select(); }, 50);
+  }
+  function hideInputDialog() {
+    _inputOverlay.hidden = true;
+    _inputCb = null;
+  }
+  function _submitInput() {
+    var val = _inputField.value.trim();
+    var cb  = _inputCb;
+    hideInputDialog();
+    if (cb) cb(val);
+  }
+
+  document.getElementById('input-cancel').addEventListener('click', hideInputDialog);
+  document.getElementById('input-confirm').addEventListener('click', _submitInput);
+  _inputField.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); _submitInput(); }
+    if (e.key === 'Escape') { e.preventDefault(); hideInputDialog(); }
+  });
+  _inputOverlay.addEventListener('click', function(e) {
+    if (e.target === _inputOverlay) hideInputDialog();
   });
 
   // ── SPA history ───────────────────────────────────────────────────────────
@@ -703,7 +867,7 @@
   document.addEventListener('mouseup',   function(e){ if(activeDrag){ activeDrag.onEnd(e.clientX); activeDrag=null; } });
 
   function closeOtherCards(exceptWrap){
-    document.querySelectorAll('.card-wrap').forEach(function(w){
+    document.getElementById('cards-container').querySelectorAll('.card-wrap').forEach(function(w){
       if(w!==exceptWrap && w._offset!==0){
         var f=w.querySelector('.card-face');
         f.style.transition='transform 0.2s ease'; f.style.transform='translateX(0)'; w._offset=0;
@@ -769,25 +933,27 @@
 
   // ── View switching ────────────────────────────────────────────────────────
   function showView(v){
-    ['view-picker','view-list','view-editor'].forEach(function(id){
+    ['view-picker','view-list'].forEach(function(id){
       document.getElementById(id).hidden = (id!==v);
     });
     document.getElementById('bottom-fade').hidden = (v!=='view-list');
     if(v==='view-list'){
-      window.scrollTo(0,0);
+      listViewEl.scrollTop = 0;
       updateTitleScale();
     }
   }
 
+  function resetRawMode() {
+    isRawMode = false;
+    rawViewEl.hidden = true;
+    cardsEl.hidden = false;
+    document.getElementById('hotkey-hints').hidden = false;
+    document.getElementById('action-grid').classList.remove('raw-mode');
+    rawToggleEl.textContent = '\u270e raw CSV';
+  }
+
   function doShowPicker(){
-    if (isRawMode) {
-      isRawMode = false;
-      rawViewEl.hidden = true;
-      cardsEl.hidden = false;
-      document.getElementById('hotkey-hints').hidden = false;
-      document.getElementById('action-grid').classList.remove('raw-mode');
-      rawToggleEl.textContent = '\u270e raw CSV';
-    }
+    if (isRawMode) resetRawMode();
     isDirty = false;
     currentPath = null; searchQuery = '';
     document.getElementById('search-input').value = '';
@@ -830,28 +996,36 @@
       .catch(function(e){c.innerHTML='<div class="empty-msg" style="color:#e74c3c;">'+esc(e.message)+'</div>';});
   }
 
+  var DECK_NAME_RE = /^[\w\s\-]+$/;
+
   function newDeck(){
-    var name=prompt('Deck name:');
-    if(!name||!name.trim()) return;
-    var t=name.trim();
-    if(!/^[\w\s\-]+$/.test(t)){alert('Use letters, numbers, spaces, underscores and hyphens only.'); return;}
-    var path='/anki/'+t+'.csv';
-    var csv=serializeCSV(['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'],[]);
-    fetch('/api/deck?path='+encodeURIComponent(path),{method:'POST',headers:{'Content-Type':'text/plain'},body:csv})
-      .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});
-        showBanner('picker-banner','Deck "'+t+'" created.',false); loadDeckList();})
-      .catch(function(e){showBanner('picker-banner','Error: '+e.message,true);});
+    showInputDialog('New Deck', 'Deck name\u2026', '', function(t) {
+      if (!t) return;
+      if (!DECK_NAME_RE.test(t)) {
+        showBanner('picker-banner','Use letters, numbers, spaces, underscores and hyphens only.',true);
+        return;
+      }
+      var path='/anki/'+t+'.csv';
+      var csv=serializeCSV(['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'],[]);
+      fetch('/api/deck?path='+encodeURIComponent(path),{method:'POST',headers:{'Content-Type':'text/plain'},body:csv})
+        .then(function(r){if(!r.ok)return r.text().then(function(b){throw new Error(b);});
+          showBanner('picker-banner','Deck "'+t+'" created.',false); loadDeckList();})
+        .catch(function(e){showBanner('picker-banner','Error: '+e.message,true);});
+    });
   }
 
   function renameDeck(oldPath, oldTitle){
-    var newName=prompt('Rename "'+oldTitle+'" to:',oldTitle);
-    if(!newName||!newName.trim()||newName.trim()===oldTitle) return;
-    var t=newName.trim();
-    if(!/^[\w\s\-]+$/.test(t)){alert('Use letters, numbers, spaces, underscores and hyphens only.'); return;}
-    var newPath='/anki/'+t+'.csv';
-    fetch('/api/rename-deck?from='+encodeURIComponent(oldPath)+'&to='+encodeURIComponent(newPath),{method:'POST'})
-      .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);}); loadDeckList();})
-      .catch(function(e){showBanner('picker-banner','Rename failed: '+e.message,true);});
+    showInputDialog('Rename "'+oldTitle+'"', 'New name\u2026', oldTitle, function(t) {
+      if (!t || t === oldTitle) return;
+      if (!DECK_NAME_RE.test(t)) {
+        showBanner('picker-banner','Use letters, numbers, spaces, underscores and hyphens only.',true);
+        return;
+      }
+      var newPath='/anki/'+t+'.csv';
+      fetch('/api/rename-deck?from='+encodeURIComponent(oldPath)+'&to='+encodeURIComponent(newPath),{method:'POST'})
+        .then(function(r){if(!r.ok)return r.text().then(function(b){throw new Error(b);}); loadDeckList();})
+        .catch(function(e){showBanner('picker-banner','Rename failed: '+e.message,true);});
+    });
   }
 
   // ── Card List ─────────────────────────────────────────────────────────────
@@ -864,7 +1038,13 @@
     titleEl.textContent=name;
     searchQuery=''; document.getElementById('search-input').value='';
     rows=[]; headers=[];
-    renderCards();
+    // Show loader while fetching — don't call renderCards() yet to avoid the
+    // empty-state flash before data arrives.
+    document.getElementById('cards-container').innerHTML =
+      '<div style="text-align:center;padding:40px 20px;color:#95a5a6;">' +
+      '<span class="loader"></span> Loading&hellip;</div>';
+    document.getElementById('list-empty').hidden = true;
+    document.getElementById('no-results').hidden = true;
     showView('view-list');
     if(pushHistory !== false) history.pushState({view:'list', path:path}, '');
     fetch('/api/deck?path='+encodeURIComponent(path))
@@ -894,10 +1074,12 @@
       if(!matchesQuery(rows[i],q)) continue;
       var wrap=makeCard(i,q);
       c.appendChild(wrap);
-      // autoResize must run after DOM insertion — scrollHeight is 0 on
-      // detached elements, which would leave textareas at height:0 and
-      // invisible to the iOS Safari form-assistant toolbar.
-      wrap.querySelectorAll('.card-edit').forEach(autoResize);
+      // Set a minimal non-zero height after DOM insertion so the iOS Safari
+      // form-assistant toolbar can discover the textareas (it skips zero
+      // bounding-box elements).  1px is imperceptible with opacity:0 and
+      // overflow:hidden, and iOS doesn't forget textareas after a later
+      // style.height reset on blur.  Full autoResize runs on focus/input.
+      wrap.querySelectorAll('.card-edit').forEach(function(ta){ ta.style.height='1px'; });
       shown++;
     }
     if(shown===0) noMatch.hidden=false;
@@ -951,6 +1133,7 @@
       ta.addEventListener('blur',function(){
         half.classList.remove('editing');
         preview.innerHTML=md(this.value, searchQuery||'');
+        this.style.height=''; // clear autoResize inline height; CSS height:0 takes over
         resetZoom();
       });
       ta.addEventListener('keydown',function(e){
@@ -992,7 +1175,24 @@
       function(){dupCard(i);},
       function(){deleteCard(i);}
     );
-    return wrap;
+
+    var outer=document.createElement('div');
+    outer.className='card-outer';
+    outer.appendChild(wrap);
+
+    var btnDup=document.createElement('button');
+    btnDup.className='margin-btn margin-dup'; btnDup.title='Duplicate';
+    btnDup.textContent='+';
+    var btnDel=document.createElement('button');
+    btnDel.className='margin-btn margin-del'; btnDel.title='Delete';
+    btnDel.textContent='-';
+    outer.appendChild(btnDup);
+    outer.appendChild(btnDel);
+
+    btnDup.addEventListener('click',function(e){e.stopPropagation();dupCard(i);});
+    btnDel.addEventListener('click',function(e){e.stopPropagation();deleteCard(i);});
+
+    return outer;
   }
 
   function addCard(){
@@ -1018,16 +1218,18 @@
   function saveCards(onSuccess){
     var btn=document.getElementById('save-btn');
     btn.disabled=true; btn.textContent='Saving\u2026';
+    var ok=false;
     fetch('/api/deck?path='+encodeURIComponent(currentPath),{
       method:'POST', headers:{'Content-Type':'text/plain'}, body:serializeCSV(headers,rows)
     })
       .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});
-        isDirty=false;
-        showBanner('list-banner','Saved.',false);
+        isDirty=false; ok=true;
+        btn.disabled=false; btn.textContent='Saved'; btn.classList.add('saved');
+        setTimeout(function(){ btn.textContent='Save'; btn.classList.remove('saved'); },2000);
         if(onSuccess) onSuccess();
       })
       .catch(function(e){showBanner('list-banner','Save failed: '+e.message,true);})
-      .finally(function(){btn.disabled=false; btn.textContent='Save';});
+      .finally(function(){ if(!ok){btn.disabled=false; btn.textContent='Save';} });
   }
 
   // ── Raw CSV mode ──────────────────────────────────────────────────────────
@@ -1052,7 +1254,6 @@
   }
 
   function exitRawMode() {
-    isRawMode = false;
     var parsed = parseCSV(rawTa.value);
     if (parsed.headers.length >= 2) {
       headers = parsed.headers.length >= 6 ? parsed.headers
@@ -1064,11 +1265,7 @@
       });
       isDirty = true;
     }
-    rawViewEl.hidden  = true;
-    cardsEl.hidden    = false;
-    document.getElementById('hotkey-hints').hidden = false;
-    document.getElementById('action-grid').classList.remove('raw-mode');
-    rawToggleEl.textContent = '\u270e raw CSV';
+    resetRawMode();
     renderCards();
   }
 
