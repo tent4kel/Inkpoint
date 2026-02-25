@@ -293,47 +293,45 @@ uint16_t CrossPointSettings::getPoolSizeValue() const {
 }
 
 int CrossPointSettings::getFontId(FONT_FAMILY f, FONT_SIZE s) {
-  // <<< GENERATED
   switch (f) {
     case BOOKERLY:
     default:
       switch (s) {
-        case FONT_S:
-          return BOOKERLY_10_FONT_ID;
-        case FONT_M:
+        case TINY:
           return BOOKERLY_11_FONT_ID;
-        case FONT_L:
+        case SMALL:
+          return BOOKERLY_12_FONT_ID;
+        case MEDIUM:
         default:
           return BOOKERLY_14_FONT_ID;
-        case FONT_XL:
-          return BOOKERLY_17_FONT_ID;
+        case EXTRA_LARGE:
+          return BOOKERLY_18_FONT_ID;
       }
     case CHAREINK:
       switch (s) {
-        case FONT_S:
-          return CHAREINK_11_FONT_ID;
-        case FONT_M:
-          return CHAREINK_11_5_FONT_ID;
-        case FONT_L:
+        case TINY:
+          return CHAREINK_12_FONT_ID;
+        case SMALL:
+          return CHAREINK_13_FONT_ID;
+        case MEDIUM:
         default:
-          return CHAREINK_16_FONT_ID;
-        case FONT_XL:
+          return CHAREINK_15_FONT_ID;
+        case EXTRA_LARGE:
           return CHAREINK_19_FONT_ID;
       }
     case NEWSREADER:
       switch (s) {
-        case FONT_S:
-          return NEWSREADER_11_7_FONT_ID;
-        case FONT_M:
-          return NEWSREADER_12_2_FONT_ID;
-        case FONT_L:
+        case TINY:
+          return NEWSREADER_12_FONT_ID;
+        case SMALL:
+          return NEWSREADER_13_FONT_ID;
+        case MEDIUM:
         default:
-          return NEWSREADER_16_FONT_ID;
-        case FONT_XL:
+          return NEWSREADER_15_FONT_ID;
+        case EXTRA_LARGE:
           return NEWSREADER_19_FONT_ID;
       }
   }
-  // GENERATED >>>
 }
 
 int CrossPointSettings::getReaderFontId() const {
