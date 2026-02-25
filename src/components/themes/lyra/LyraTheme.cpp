@@ -13,6 +13,7 @@
 #include "components/UITheme.h"
 #include "components/icons/book.h"
 #include "components/icons/flashcards.h"
+#include "components/icons/instapaper.h"
 #include "components/icons/book24.h"
 #include "components/icons/cover.h"
 #include "components/icons/file24.h"
@@ -79,6 +80,8 @@ const uint8_t* iconForName(UIIcon icon, int size) {
         return HotspotIcon;
       case UIIcon::Flashcards:
         return FlashcardsIcon;
+      case UIIcon::Newspaper:
+        return InstapaperIcon;
       default:
         return nullptr;
     }
