@@ -693,9 +693,9 @@ void InstapaperActivity::downloadSingleArticle(DisplayBookmark& bm, HttpDownload
     return;
   }
 
-  // getArticleText() already caps at 64 KB via postUrl(maxBytes). This guard is a safety net
+  // getArticleText() already caps at 16 KB via postUrl(maxBytes). This guard is a safety net
   // in case the cap is ever changed — keeps HTML + markdown peak well under the 380 KB ceiling.
-  constexpr size_t MAX_HTML = 32768;  // 32 KB — matches postUrl cap in getArticleText()
+  constexpr size_t MAX_HTML = 16384;  // 16 KB — matches postUrl cap in getArticleText()
   if (html.size() > MAX_HTML) {
     LOG_INF("INS", "Article HTML %zu bytes, truncating to %zu to avoid OOM", html.size(), MAX_HTML);
     html.resize(MAX_HTML);
