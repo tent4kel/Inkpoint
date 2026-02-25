@@ -34,7 +34,7 @@ for size in 12 13 14 15 16 18 19; do
     lower="${LOWER_MAP[$i]}"
     name="chareink_${size}_${lower}"
     python3 fontconvert.py "$name" "$size" "$SRCDIR_CHAREINK/ChareInk7SPWT-${style}.ttf" \
-      --2bit --compress --force-autohint > "$OUTDIR/${name}.h"
+      --2bit --compress > "$OUTDIR/${name}.h"
     echo "  Generated ${name}.h"
   done
 done
@@ -46,7 +46,7 @@ for size in 11 12 13 14 15 16 18 19; do
     lower="${LOWER_MAP[$i]}"
     name="newsreader_${size}_${lower}"
     python3 fontconvert.py "$name" "$size" "$SRCDIR_NEWSREADER/NewsreaderText-${style}.ttf" \
-      --2bit --compress --force-autohint > "$OUTDIR/${name}.h"
+      --2bit --compress > "$OUTDIR/${name}.h"
     echo "  Generated ${name}.h"
   done
 done
