@@ -270,7 +270,7 @@ for i_start, i_end in intervals:
         glyph = GlyphProps(
             width = bitmap.width,
             height = bitmap.rows,
-            advance_x = norm_floor(face.glyph.advance.x),
+            advance_x = max(0, norm_floor(face.glyph.advance.x)),
             left = face.glyph.bitmap_left,
             top = face.glyph.bitmap_top,
             data_length = len(packed),
