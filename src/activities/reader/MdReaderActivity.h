@@ -46,7 +46,7 @@ class MdReaderActivity final : public ActivityWithSubactivity {
   void renderScreen();
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
-  void renderStatusBar(int orientedMarginRight, int orientedMarginBottom, int orientedMarginLeft) const;
+  void renderStatusBar(int orientedMarginRight, int orientedMarginBottom, int orientedMarginLeft);
 
   void initializeReader();
   bool loadSectionCache(int fontId, float lineCompression, bool extraParagraphSpacing, uint8_t paragraphAlignment,
