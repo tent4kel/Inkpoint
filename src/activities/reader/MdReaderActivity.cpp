@@ -187,7 +187,7 @@ void MdReaderActivity::initializeReader() {
                                  SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::ONLY_BOOK_PROGRESS_BAR ||
                                  SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
     orientedMarginBottom += statusBarMargin - cachedScreenMargin +
-                            (showProgressBar ? (metrics.bookProgressBarHeight + progressBarMarginTop) : 0);
+                            (showProgressBar ? (metrics.progressBarHeight + progressBarMarginTop) : 0);
   }
 
   const uint16_t viewportWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
@@ -388,7 +388,7 @@ void MdReaderActivity::renderScreen() {
                                  SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::ONLY_BOOK_PROGRESS_BAR ||
                                  SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
     orientedMarginBottom += statusBarMargin - cachedScreenMargin +
-                            (showProgressBar ? (metrics.bookProgressBarHeight + progressBarMarginTop) : 0);
+                            (showProgressBar ? (metrics.progressBarHeight + progressBarMarginTop) : 0);
   }
 
   auto page = loadPageFromCache(currentPage);
@@ -440,71 +440,11 @@ void MdReaderActivity::renderContents(std::unique_ptr<Page> page, const int orie
   }
 }
 
-void MdReaderActivity::renderStatusBar(const int orientedMarginRight, const int orientedMarginBottom,
-                                       const int orientedMarginLeft) const {
-  const bool showProgressPercentage = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::FULL;
-  const bool showProgressBar = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR ||
-                               SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::ONLY_BOOK_PROGRESS_BAR;
-  const bool showChapterProgressBar = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
-  const bool showProgressText = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::FULL ||
-                                SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR;
-  const bool showBookPercentage = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
-  const bool showBattery = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::NO_PROGRESS ||
-                           SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::FULL ||
-                           SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR ||
-                           SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
-  const bool showTitle = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::NO_PROGRESS ||
-                         SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::FULL ||
-                         SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR ||
-                         SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
-  const bool showBatteryPercentage =
-      SETTINGS.hideBatteryPercentage == CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_NEVER;
-
-  auto metrics = UITheme::getInstance().getMetrics();
-  const auto screenHeight = renderer.getScreenHeight();
-  const auto textY = screenHeight - orientedMarginBottom - 4;
-  int progressTextWidth = 0;
-
+void MdReaderActivity::renderStatusBar(const int /*orientedMarginRight*/, const int /*orientedMarginBottom*/,
+                                       const int /*orientedMarginLeft*/) {
   const float progress = totalPages > 0 ? (currentPage + 1) * 100.0f / totalPages : 0;
-
-  if (showProgressText || showProgressPercentage || showBookPercentage) {
-    char progressStr[32];
-    if (showProgressPercentage) {
-      snprintf(progressStr, sizeof(progressStr), "%d/%d %.0f%%", currentPage + 1, totalPages, progress);
-    } else if (showBookPercentage) {
-      snprintf(progressStr, sizeof(progressStr), "%.0f%%", progress);
-    } else {
-      snprintf(progressStr, sizeof(progressStr), "%d/%d", currentPage + 1, totalPages);
-    }
-
-    progressTextWidth = renderer.getTextWidth(SMALL_FONT_ID, progressStr);
-    renderer.drawText(SMALL_FONT_ID, renderer.getScreenWidth() - orientedMarginRight - progressTextWidth, textY,
-                      progressStr);
-  }
-
-  if (showProgressBar || showChapterProgressBar) {
-    GUI.drawReadingProgressBar(renderer, static_cast<size_t>(progress));
-  }
-
-  if (showBattery) {
-    GUI.drawBatteryLeft(renderer, Rect{orientedMarginLeft, textY, metrics.batteryWidth, metrics.batteryHeight},
-                    showBatteryPercentage);
-  }
-
-  if (showTitle) {
-    const int titleMarginLeft = 50 + 30 + orientedMarginLeft;
-    const int titleMarginRight = progressTextWidth + 30 + orientedMarginRight;
-    const int availableTextWidth = renderer.getScreenWidth() - titleMarginLeft - titleMarginRight;
-
-    std::string title = md->getTitle();
-    int titleWidth = renderer.getTextWidth(SMALL_FONT_ID, title.c_str());
-    if (titleWidth > availableTextWidth) {
-      title = renderer.truncatedText(SMALL_FONT_ID, title.c_str(), availableTextWidth);
-      titleWidth = renderer.getTextWidth(SMALL_FONT_ID, title.c_str());
-    }
-
-    renderer.drawText(SMALL_FONT_ID, titleMarginLeft + (availableTextWidth - titleWidth) / 2, textY, title.c_str());
-  }
+  const std::string title = md->getTitle();
+  GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title);
 }
 
 void MdReaderActivity::saveProgress() const {
