@@ -36,29 +36,29 @@ std::string deckSettingsPath(const std::string& csvPath) {
 // --- Anki-specific settings (independent of reader) ---
 
 int AnkiActivity::getFontIdForAnkiSize() const {
-  // Use the global font family setting but our own size
+  // Use the global font family setting but our own size (skips smallest reader size)
   switch (SETTINGS.fontFamily) {
     case CrossPointSettings::BOOKERLY:
     default:
       switch (ankiFontSize) {
         case 0: return BOOKERLY_12_FONT_ID;
         case 1: default: return BOOKERLY_14_FONT_ID;
-        case 2: return BOOKERLY_16_FONT_ID;
+        case 2: return BOOKERLY_18_FONT_ID;
         case 3: return BOOKERLY_18_FONT_ID;
       }
-    case CrossPointSettings::NOTOSANS:
+    case CrossPointSettings::NEWSREADER:
       switch (ankiFontSize) {
-        case 0: return NOTOSANS_12_FONT_ID;
-        case 1: default: return NOTOSANS_14_FONT_ID;
-        case 2: return NOTOSANS_16_FONT_ID;
-        case 3: return NOTOSANS_18_FONT_ID;
+        case 0: return NEWSREADER_13_FONT_ID;
+        case 1: default: return NEWSREADER_13_FONT_ID;
+        case 2: return NEWSREADER_15_FONT_ID;
+        case 3: return NEWSREADER_19_FONT_ID;
       }
-    case CrossPointSettings::OPENDYSLEXIC:
+    case CrossPointSettings::CHAREINK:
       switch (ankiFontSize) {
-        case 0: return OPENDYSLEXIC_8_FONT_ID;
-        case 1: default: return OPENDYSLEXIC_10_FONT_ID;
-        case 2: return OPENDYSLEXIC_12_FONT_ID;
-        case 3: return OPENDYSLEXIC_14_FONT_ID;
+        case 0: return CHAREINK_13_FONT_ID;
+        case 1: default: return CHAREINK_13_FONT_ID;
+        case 2: return CHAREINK_15_FONT_ID;
+        case 3: return CHAREINK_19_FONT_ID;
       }
   }
 }
