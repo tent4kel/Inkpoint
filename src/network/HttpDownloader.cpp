@@ -90,13 +90,13 @@ bool HttpDownloader::postUrl(const std::string& url, const std::string& body, co
     outContent.reserve(maxBytes); // reuses probe's block; capacity = maxBytes, no realloc during stream
   }
 
-  std::unique_ptr<WiFiClient> client;
+  std::unique_ptr<NetworkClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
-    auto* secureClient = new WiFiClientSecure();
+    auto* secureClient = new NetworkClientSecure();
     secureClient->setInsecure();
     client.reset(secureClient);
   } else {
-    client.reset(new WiFiClient());
+    client.reset(new NetworkClient());
   }
   HTTPClient http;
 
@@ -121,7 +121,7 @@ bool HttpDownloader::postUrl(const std::string& url, const std::string& body, co
   const int contentLength = http.getSize();
   if (maxBytes == 0) outContent.clear();
 
-  WiFiClient* stream = http.getStreamPtr();
+  NetworkClient* stream = http.getStreamPtr();
   if (!stream) {
     LOG_ERR("HTTP", "POST: failed to get stream ptr");
     http.end();
