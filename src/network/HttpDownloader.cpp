@@ -1,5 +1,6 @@
 #include "HttpDownloader.h"
 
+#include <Esp.h>
 #include <HTTPClient.h>
 #include <Logging.h>
 #include <NetworkClient.h>
@@ -13,15 +14,40 @@
 #include "CrossPointSettings.h"
 #include "util/UrlUtils.h"
 
+// Minimum contiguous block required before attempting a TLS connection.
+// mbedTLS context + record buffers typically consume 25-40 KB.  If the heap
+// is more fragmented than this the allocation would either fail (nothrow) or
+// succeed and leave too little room for the response buffer + other tasks,
+// resulting in MinFree < 2 KB and a frozen device.
+static constexpr uint32_t TLS_MIN_HEAP = 50000;
+
+static bool hasTlsHeap() {
+  const uint32_t maxAlloc = ESP.getMaxAllocHeap();
+  if (maxAlloc < TLS_MIN_HEAP) {
+    LOG_ERR("HTTP", "Insufficient heap for TLS: MaxAlloc=%u", maxAlloc);
+    return false;
+  }
+  return true;
+}
+
 bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent) {
-  // Use NetworkClientSecure for HTTPS, regular NetworkClient for HTTP
+  if (UrlUtils::isHttpsUrl(url) && !hasTlsHeap()) return false;
   std::unique_ptr<NetworkClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
-    auto* secureClient = new NetworkClientSecure();
+    auto* secureClient = new (std::nothrow) NetworkClientSecure();
+    if (!secureClient) {
+      LOG_ERR("HTTP", "OOM allocating TLS client");
+      return false;
+    }
     secureClient->setInsecure();
     client.reset(secureClient);
   } else {
-    client.reset(new NetworkClient());
+    auto* plainClient = new (std::nothrow) NetworkClient();
+    if (!plainClient) {
+      LOG_ERR("HTTP", "OOM allocating HTTP client");
+      return false;
+    }
+    client.reset(plainClient);
   }
   HTTPClient http;
 
@@ -65,6 +91,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent) {
 bool HttpDownloader::postUrl(const std::string& url, const std::string& body, const std::string& authHeader,
                              std::string& outContent, size_t maxBytes,
                              ProgressCallback progress) {
+  if (UrlUtils::isHttpsUrl(url) && !hasTlsHeap()) return false;
   // Capped path (maxBytes > 0): pre-reserve the response string BEFORE creating the TLS context.
   //
   // Why: std::string::append() triggers doubling reallocations that require old+new buffers
@@ -92,11 +119,20 @@ bool HttpDownloader::postUrl(const std::string& url, const std::string& body, co
 
   std::unique_ptr<NetworkClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
-    auto* secureClient = new NetworkClientSecure();
+    auto* secureClient = new (std::nothrow) NetworkClientSecure();
+    if (!secureClient) {
+      LOG_ERR("HTTP", "OOM allocating TLS client");
+      return false;
+    }
     secureClient->setInsecure();
     client.reset(secureClient);
   } else {
-    client.reset(new NetworkClient());
+    auto* plainClient = new (std::nothrow) NetworkClient();
+    if (!plainClient) {
+      LOG_ERR("HTTP", "OOM allocating HTTP client");
+      return false;
+    }
+    client.reset(plainClient);
   }
   HTTPClient http;
 
@@ -168,16 +204,156 @@ bool HttpDownloader::postUrl(const std::string& url, const std::string& body, co
   return true;
 }
 
-HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
-                                                             ProgressCallback progress) {
-  // Use NetworkClientSecure for HTTPS, regular NetworkClient for HTTP
+HttpDownloader::DownloadError HttpDownloader::postUrlToFile(const std::string& url, const std::string& body,
+                                                             const std::string& authHeader,
+                                                             const std::string& destPath,
+                                                             ProgressCallback progress,
+                                                             std::function<bool()> abortCheck) {
+  if (UrlUtils::isHttpsUrl(url) && !hasTlsHeap()) return HTTP_ERROR;
   std::unique_ptr<NetworkClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
-    auto* secureClient = new NetworkClientSecure();
+    auto* secureClient = new (std::nothrow) NetworkClientSecure();
+    if (!secureClient) {
+      LOG_ERR("HTTP", "OOM allocating TLS client");
+      return HTTP_ERROR;
+    }
     secureClient->setInsecure();
     client.reset(secureClient);
   } else {
-    client.reset(new NetworkClient());
+    auto* plainClient = new (std::nothrow) NetworkClient();
+    if (!plainClient) {
+      LOG_ERR("HTTP", "OOM allocating HTTP client");
+      return HTTP_ERROR;
+    }
+    client.reset(plainClient);
+  }
+  HTTPClient http;
+
+  LOG_DBG("HTTP", "POST to file: %s -> %s", url.c_str(), destPath.c_str());
+
+  http.begin(*client, url.c_str());
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.addHeader("User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  if (!authHeader.empty()) {
+    http.addHeader("Authorization", authHeader.c_str());
+  }
+
+  const int httpCode = http.POST(body.c_str());
+  if (httpCode != HTTP_CODE_OK) {
+    // Log a snippet of the error body for diagnostics (small, 256-byte buffer)
+    uint8_t* errBuf = static_cast<uint8_t*>(malloc(256));
+    if (errBuf) {
+      NetworkClient* errStream = http.getStreamPtr();
+      size_t errRead = 0;
+      if (errStream) {
+        errRead = errStream->readBytes(errBuf, 255);
+      }
+      errBuf[errRead] = '\0';
+      LOG_ERR("HTTP", "POST to file failed: %d body: %s", httpCode, reinterpret_cast<char*>(errBuf));
+      free(errBuf);
+    } else {
+      LOG_ERR("HTTP", "POST to file failed: %d", httpCode);
+    }
+    http.end();
+    return HTTP_ERROR;
+  }
+
+  const size_t contentLength = http.getSize();
+  LOG_DBG("HTTP", "POST Content-Length: %zu", contentLength);
+
+  // Remove existing file if present
+  if (Storage.exists(destPath.c_str())) {
+    Storage.remove(destPath.c_str());
+  }
+
+  FsFile file;
+  if (!Storage.openFileForWrite("HTTP", destPath.c_str(), file)) {
+    LOG_ERR("HTTP", "POST to file: failed to open dest file");
+    http.end();
+    return FILE_ERROR;
+  }
+
+  NetworkClient* stream = http.getStreamPtr();
+  if (!stream) {
+    LOG_ERR("HTTP", "POST to file: failed to get stream ptr");
+    file.close();
+    Storage.remove(destPath.c_str());
+    http.end();
+    return HTTP_ERROR;
+  }
+
+  // Heap-allocate chunk buffer — keeps stack frame small
+  uint8_t* chunkBuf = static_cast<uint8_t*>(malloc(DOWNLOAD_CHUNK_SIZE));
+  if (!chunkBuf) {
+    LOG_ERR("HTTP", "POST to file: failed to alloc chunk buffer");
+    file.close();
+    Storage.remove(destPath.c_str());
+    http.end();
+    return FILE_ERROR;
+  }
+
+  size_t downloaded = 0;
+  while (http.connected() && (contentLength == 0 || downloaded < contentLength)) {
+    const size_t available = stream->available();
+    if (available == 0) {
+      delay(1);
+      continue;
+    }
+    const size_t toRead = available < DOWNLOAD_CHUNK_SIZE ? available : DOWNLOAD_CHUNK_SIZE;
+    const size_t bytesRead = stream->readBytes(chunkBuf, toRead);
+    if (bytesRead == 0) break;
+
+    const size_t written = file.write(chunkBuf, bytesRead);
+    if (written != bytesRead) {
+      LOG_ERR("HTTP", "POST to file: write failed (%zu of %zu)", written, bytesRead);
+      free(chunkBuf);
+      file.close();
+      Storage.remove(destPath.c_str());
+      http.end();
+      return FILE_ERROR;
+    }
+    downloaded += bytesRead;
+    if (progress && contentLength > 0) {
+      progress(downloaded, contentLength);
+    }
+    if (abortCheck && abortCheck()) {
+      free(chunkBuf);
+      file.close();
+      Storage.remove(destPath.c_str());
+      http.end();
+      return ABORTED;
+    }
+  }
+
+  free(chunkBuf);
+  file.close();
+  http.end();
+
+  LOG_DBG("HTTP", "POST to file: %zu bytes -> %s", downloaded, destPath.c_str());
+  return OK;
+}
+
+HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
+                                                             ProgressCallback progress) {
+  if (UrlUtils::isHttpsUrl(url) && !hasTlsHeap()) return HTTP_ERROR;
+  // Use NetworkClientSecure for HTTPS, regular NetworkClient for HTTP
+  std::unique_ptr<NetworkClient> client;
+  if (UrlUtils::isHttpsUrl(url)) {
+    auto* secureClient = new (std::nothrow) NetworkClientSecure();
+    if (!secureClient) {
+      LOG_ERR("HTTP", "OOM allocating TLS client");
+      return HTTP_ERROR;
+    }
+    secureClient->setInsecure();
+    client.reset(secureClient);
+  } else {
+    auto* plainClient = new (std::nothrow) NetworkClient();
+    if (!plainClient) {
+      LOG_ERR("HTTP", "OOM allocating HTTP client");
+      return HTTP_ERROR;
+    }
+    client.reset(plainClient);
   }
   HTTPClient http;
 

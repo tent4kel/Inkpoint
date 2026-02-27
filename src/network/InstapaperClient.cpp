@@ -197,9 +197,15 @@ bool InstapaperClient::listBookmarks(int limit, std::vector<InstapaperBookmark>&
   // 20 KB cap: 25 bookmarks × ~600 bytes JSON each ≈ 15 KB. Hard cap prevents unbounded
   // reallocation on a fragmented heap (TLS ~34 KB still live during streaming).
   constexpr size_t MAX_BOOKMARK_LIST = 20480;
-  bool ok = withRetries([&]() { return HttpDownloader::postUrl(url, body, authHeader, response, MAX_BOOKMARK_LIST); });
+  // maxRetries=1: single attempt, no retry.
+  // Retrying listBookmarks creates a fresh TLS context while the heap is still
+  // fragmented from the first attempt (~26 KB TLS + various mbedTLS buffers not
+  // immediately freed). A second TLS on top of the residual fragments easily
+  // exhausts the 233 KB heap, dropping MinFree to < 2 KB. Fail-fast here; the
+  // next Instapaper entry will re-sync.
+  bool ok = withRetries([&]() { return HttpDownloader::postUrl(url, body, authHeader, response, MAX_BOOKMARK_LIST); }, 1);
   if (!ok) {
-    LOG_ERR("IPC", "List bookmarks failed after retries");
+    LOG_ERR("IPC", "List bookmarks failed");
     return false;
   }
 
@@ -245,6 +251,37 @@ bool InstapaperClient::listBookmarks(int limit, std::vector<InstapaperBookmark>&
 
   LOG_DBG("IPC", "Found %d bookmarks", outBookmarks.size());
   return true;
+}
+
+HttpDownloader::DownloadError InstapaperClient::getArticleToFile(const std::string& bookmarkId,
+                                                                  const std::string& destPath,
+                                                                  HttpDownloader::ProgressCallback progress,
+                                                                  std::function<bool()> abortCheck) {
+  std::string url = std::string(BASE_URL) + "/api/1/bookmarks/get_text";
+
+  std::map<std::string, std::string> params;
+  params["bookmark_id"] = bookmarkId;
+
+  const auto& token = INSTAPAPER_STORE.getToken();
+  const auto& tokenSecret = INSTAPAPER_STORE.getTokenSecret();
+
+  std::string authHeader = InstapaperOAuth::sign("POST", url, params, InstapaperSecrets::consumerKey(),
+                                                  InstapaperSecrets::consumerSecret(), token, tokenSecret);
+  std::string body = buildBody(params);
+
+  HttpDownloader::DownloadError result = HttpDownloader::DownloadError::HTTP_ERROR;
+  withRetries([&]() {
+    result = HttpDownloader::postUrlToFile(url, body, authHeader, destPath, progress, abortCheck);
+    // Don't retry on abort — the user explicitly cancelled
+    return result == HttpDownloader::DownloadError::OK || result == HttpDownloader::DownloadError::ABORTED;
+  });
+
+  if (result != HttpDownloader::DownloadError::OK) {
+    LOG_ERR("IPC", "getArticleToFile failed for bookmark %s", bookmarkId.c_str());
+  } else {
+    LOG_DBG("IPC", "getArticleToFile saved to %s", destPath.c_str());
+  }
+  return result;
 }
 
 bool InstapaperClient::getArticleText(const std::string& bookmarkId, std::string& outHtml,

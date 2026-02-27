@@ -29,7 +29,9 @@
 #include "activities/anki/AnkiActivity.h"
 #include "activities/anki/AnkiDeckExplorerActivity.h"
 #include "activities/network/CrossPointWebServerActivity.h"
+#include "activities/reader/HtmlReaderActivity.h"
 #include "activities/reader/ReaderActivity.h"
+#include <WebArticle.h>
 #include "activities/settings/SettingsActivity.h"
 #include "activities/util/FullScreenMessageActivity.h"
 #include "anki/AnkiSessionManager.h"
@@ -219,6 +221,7 @@ void enterDeepSleep() {
 }
 
 void onGoHome();
+void onGoToInstapaper();
 void onGoToMyLibraryWithPath(const std::string& path);
 void onGoToRecentBooks();
 void onGoToAnki(const std::string& csvPath) {
@@ -250,6 +253,16 @@ void onGoToReader(const std::string& initialEpubPath) {
     return;
   }
   const std::string bookPath = initialEpubPath;  // Copy before exitActivity() invalidates the reference
+
+  // Route Instapaper HTML files through InstapaperActivity so back-button and
+  // advance/delete callbacks work correctly (e.g. opening from Recent Books or boot-resume).
+  if (StringUtils::checkFileExtension(bookPath, ".html") &&
+      bookPath.find(INSTAPAPER_STORE.getDownloadFolder()) == 0) {
+    InstapaperActivity::setPendingOpenPath(bookPath);
+    onGoToInstapaper();
+    return;
+  }
+
   exitActivity();
   enterNewActivity(new ReaderActivity(renderer, mappedInputManager, bookPath, onGoHome, onGoToMyLibraryWithPath));
 }
@@ -284,16 +297,30 @@ void onGoToBrowser() {
   enterNewActivity(new OpdsBookBrowserActivity(renderer, mappedInputManager, onGoHome));
 }
 
-void onGoToInstapaper();
-void onGoToReaderFromInstapaper(const std::string& initialEpubPath) {
+void onGoToReaderFromInstapaper(const std::string& path,
+                                 std::function<void()> onAdvance,
+                                 std::function<void()> onDeleteAndAdvance) {
   exitActivity();
-  enterNewActivity(
-      new ReaderActivity(renderer, mappedInputManager, initialEpubPath, onGoToInstapaper, onGoToMyLibraryWithPath));
+  auto wa = std::make_unique<WebArticle>(path, "/.crosspoint");
+  if (!wa->load()) {
+    onGoToInstapaper();
+    return;
+  }
+  enterNewActivity(new HtmlReaderActivity(
+      renderer, mappedInputManager, std::move(wa),
+      onGoToInstapaper,          // onGoBack  — back button → article list
+      onGoHome,                  // onGoHome  — long-press → home screen
+      std::move(onAdvance),
+      std::move(onDeleteAndAdvance)));
 }
 
 void onGoToInstapaper() {
   exitActivity();
-  enterNewActivity(new InstapaperActivity(renderer, mappedInputManager, onGoHome, onGoToReaderFromInstapaper));
+  enterNewActivity(new InstapaperActivity(
+      renderer, mappedInputManager, onGoHome, onGoToInstapaper,
+      [](const std::string& path, std::function<void()> adv, std::function<void()> del) {
+        onGoToReaderFromInstapaper(path, std::move(adv), std::move(del));
+      }));
 }
 
 void onGoHome() {
