@@ -43,6 +43,11 @@ class InstapaperActivity final : public ActivityWithSubactivity {
   void onExit() override;
   void loop() override;
 
+  // Set the article path to open immediately on entry (used by main.cpp when
+  // routing Instapaper HTML files opened outside of the article list, e.g. from
+  // Recent Books or boot-resume).
+  static void setPendingOpenPath(const std::string& path);
+
  private:
   TaskHandle_t displayTaskHandle = nullptr;
   TaskHandle_t syncTaskHandle = nullptr;

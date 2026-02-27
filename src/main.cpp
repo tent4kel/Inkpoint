@@ -36,6 +36,7 @@
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
+#include "util/StringUtils.h"
 
 HalDisplay display;
 HalGPIO gpio;
@@ -218,10 +219,21 @@ void enterDeepSleep() {
 }
 
 void onGoHome();
+void onGoToInstapaper();
 void onGoToMyLibraryWithPath(const std::string& path);
 void onGoToRecentBooks();
 void onGoToReader(const std::string& initialEpubPath) {
   const std::string bookPath = initialEpubPath;  // Copy before exitActivity() invalidates the reference
+
+  // Route Instapaper HTML files through InstapaperActivity so back-button and
+  // advance/delete callbacks work correctly (e.g. opening from Recent Books or boot-resume).
+  if (StringUtils::checkFileExtension(bookPath, ".html") &&
+      bookPath.find(INSTAPAPER_STORE.getDownloadFolder()) == 0) {
+    InstapaperActivity::setPendingOpenPath(bookPath);
+    onGoToInstapaper();
+    return;
+  }
+
   exitActivity();
   enterNewActivity(new ReaderActivity(renderer, mappedInputManager, bookPath, onGoHome, onGoToMyLibraryWithPath));
 }
@@ -255,9 +267,6 @@ void onGoToBrowser() {
   exitActivity();
   enterNewActivity(new OpdsBookBrowserActivity(renderer, mappedInputManager, onGoHome));
 }
-
-void onGoToInstapaper();
-void onGoHome();
 
 void onGoToReaderFromInstapaper(const std::string& path,
                                  std::function<void()> onAdvance,
