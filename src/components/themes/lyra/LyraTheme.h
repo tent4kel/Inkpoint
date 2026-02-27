@@ -68,4 +68,7 @@ class LyraTheme : public BaseTheme {
   void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const override;
   void drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth) const override;
   void drawKeyboardKey(const GfxRenderer& renderer, Rect rect, const char* label, const bool isSelected) const override;
+
+  [[nodiscard]] int getListSubtitleFontId() const override { return SMALL_FONT_ID; }
+  [[nodiscard]] int getListTextInset() const override { return 8; }  // hPaddingInSelection
 };

@@ -3,10 +3,12 @@
 #include <FsHelpers.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <WebArticle.h>
 
 #include "CrossPointSettings.h"
 #include "Epub.h"
 #include "EpubReaderActivity.h"
+#include "HtmlReaderActivity.h"
 #include "Markdown.h"
 #include "MdReaderActivity.h"
 #include "Txt.h"
@@ -32,6 +34,10 @@ bool ReaderActivity::isTxtFile(const std::string& path) {
 
 bool ReaderActivity::isMdFile(const std::string& path) {
   return FsHelpers::hasMarkdownExtension(path);
+}
+
+bool ReaderActivity::isHtmlFile(const std::string& path) {
+  return FsHelpers::checkFileExtension(path, ".html");
 }
 
 bool ReaderActivity::isBmpFile(const std::string& path) { return FsHelpers::hasBmpExtension(path); }
@@ -96,6 +102,21 @@ std::unique_ptr<Markdown> ReaderActivity::loadMarkdown(const std::string& path) 
   return nullptr;
 }
 
+std::unique_ptr<WebArticle> ReaderActivity::loadWebArticle(const std::string& path) {
+  if (!Storage.exists(path.c_str())) {
+    LOG_ERR("RDR", "File does not exist: %s", path.c_str());
+    return nullptr;
+  }
+
+  auto wa = std::unique_ptr<WebArticle>(new WebArticle(path, "/.crosspoint"));
+  if (wa->load()) {
+    return wa;
+  }
+
+  LOG_ERR("RDR", "Failed to load WebArticle");
+  return nullptr;
+}
+
 void ReaderActivity::goToLibrary(const std::string& fromBookPath) {
   // If coming from a book, start in that book's folder; otherwise start from root
   auto initialPath = fromBookPath.empty() ? "/" : extractFolderPath(fromBookPath);
@@ -130,6 +151,14 @@ void ReaderActivity::onGoToMdReader(std::unique_ptr<Markdown> md) {
   activityManager.replaceActivity(std::make_unique<MdReaderActivity>(renderer, mappedInput, std::move(md)));
 }
 
+void ReaderActivity::onGoToHtmlReader(std::unique_ptr<WebArticle> wa) {
+  const auto htmlPath = wa->getPath();
+  currentBookPath = htmlPath;
+  exitActivity();
+  enterNewActivity(new HtmlReaderActivity(
+      renderer, mappedInput, std::move(wa), [this, htmlPath] { goToLibrary(htmlPath); }, [this] { onGoBack(); }));
+}
+
 void ReaderActivity::onEnter() {
   Activity::onEnter();
 
@@ -155,6 +184,13 @@ void ReaderActivity::onEnter() {
       return;
     }
     onGoToMdReader(std::move(md));
+  } else if (isHtmlFile(initialBookPath)) {
+    auto wa = loadWebArticle(initialBookPath);
+    if (!wa) {
+      onGoBack();
+      return;
+    }
+    onGoToHtmlReader(std::move(wa));
   } else if (isTxtFile(initialBookPath)) {
     auto txt = loadTxt(initialBookPath);
     if (!txt) {
