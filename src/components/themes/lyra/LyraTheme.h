@@ -70,5 +70,6 @@ class LyraTheme : public BaseTheme {
   void drawKeyboardKey(const GfxRenderer& renderer, Rect rect, const char* label, const bool isSelected) const override;
 
   [[nodiscard]] int getListSubtitleFontId() const override { return SMALL_FONT_ID; }
-  [[nodiscard]] int getListTextInset() const override { return 8; }  // hPaddingInSelection
+  [[nodiscard]] int getListTextInset() const override { return 8; }        // hPaddingInSelection
+  [[nodiscard]] int getListSubtitleYOffset() const override { return 30; } // matches BaseTheme; explicit for discoverability
 };

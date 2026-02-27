@@ -2,6 +2,7 @@
 
 #include <GfxRenderer.h>
 #include <HalStorage.h>
+#include <I18n.h>
 #include <Logging.h>
 #include <WiFi.h>
 
@@ -23,6 +24,16 @@ void InstapaperActivity::setPendingOpenPath(const std::string& path) {
 }
 
 namespace {
+// Remove the HTML file, its sidecar .meta, and the render cache directory.
+// Single source of truth for the three-part deletion; used by deleteArticle()
+// and the deleteFn lambda in openArticle().
+static void deleteArticleFiles(const std::string& path) {
+  Storage.remove(path.c_str());
+  Storage.remove((path + ".meta").c_str());
+  const size_t hash = std::hash<std::string>{}(path);
+  Storage.removeDir(("/.crosspoint/html_" + std::to_string(hash)).c_str());
+}
+
 static std::string extractDomain(const std::string& url) {
   size_t s = url.find("://");
   if (s == std::string::npos) return "";
@@ -255,8 +266,8 @@ void InstapaperActivity::loadBookmarkCache() {
           }
         }
         line.clear();
-      } else {
-        line += buf[i];
+      } else if (line.size() < 4096) {
+        line += buf[i];  // bounded: silently truncate absurdly long lines
       }
     }
   }
@@ -361,14 +372,14 @@ void InstapaperActivity::loadQueueFile() {
 
 void InstapaperActivity::startBackgroundSync() {
   if (!INSTAPAPER_STORE.hasCredentials() && !INSTAPAPER_STORE.hasLoginCredentials()) {
-    syncStatus = "No credentials";
+    syncStatus = tr(STR_NO_CREDENTIALS);
     syncComplete = true;
     updateRequired = true;
     return;
   }
 
   syncing = true;
-  syncStatus = "Syncing...";
+  syncStatus = tr(STR_SYNCING);
   updateRequired = true;
   xTaskCreate(&InstapaperActivity::syncTaskTrampoline, "InstaSync", 8192, this, 1, &syncTaskHandle);
 }
@@ -386,7 +397,7 @@ void InstapaperActivity::backgroundSyncWork() {
   if (abortDownload) return;
 
   // Connect WiFi if not already connected
-  syncStatus = "WiFi...";
+  syncStatus = tr(STR_CONNECTING);
   updateRequired = true;
   if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
     WiFi.mode(WIFI_STA);
@@ -397,7 +408,7 @@ void InstapaperActivity::backgroundSyncWork() {
       attempts++;
     }
     if (WiFi.status() != WL_CONNECTED) {
-      syncStatus = "WiFi failed";
+      syncStatus = tr(STR_WIFI_CONN_FAILED);
       syncComplete = true;
       updateRequired = true;
       return;
@@ -408,7 +419,7 @@ void InstapaperActivity::backgroundSyncWork() {
   }
 
   // NTP sync (only if time not already set)
-  syncStatus = "NTP...";
+  syncStatus = tr(STR_NTP);
   updateRequired = true;
   if (time(nullptr) < 1000000000) {
     configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
@@ -422,7 +433,7 @@ void InstapaperActivity::backgroundSyncWork() {
       }
     }
     if (time(nullptr) < 1000000000) {
-      syncStatus = "NTP failed";
+      syncStatus = tr(STR_NTP_FAILED);
       syncComplete = true;
       updateRequired = true;
       return;
@@ -431,7 +442,7 @@ void InstapaperActivity::backgroundSyncWork() {
 
   // Authenticate if needed
   if (!INSTAPAPER_STORE.hasCredentials() && INSTAPAPER_STORE.hasLoginCredentials()) {
-    syncStatus = "Auth...";
+    syncStatus = tr(STR_AUTHENTICATING);
     updateRequired = true;
     std::string token, tokenSecret;
     if (InstapaperClient::authenticate(INSTAPAPER_STORE.getUsername(), INSTAPAPER_STORE.getPassword(), token,
@@ -439,7 +450,7 @@ void InstapaperActivity::backgroundSyncWork() {
       INSTAPAPER_STORE.setCredentials(token, tokenSecret);
       INSTAPAPER_STORE.saveToFile();
     } else {
-      syncStatus = "Auth failed";
+      syncStatus = tr(STR_AUTH_FAILED);
       syncComplete = true;
       updateRequired = true;
       return;
@@ -447,11 +458,11 @@ void InstapaperActivity::backgroundSyncWork() {
   }
 
   // Fetch bookmarks from API
-  syncStatus = "Fetching...";
+  syncStatus = tr(STR_FETCHING);
   updateRequired = true;
   std::vector<InstapaperBookmark> apiBookmarks;
   if (!InstapaperClient::listBookmarks(25, apiBookmarks)) {
-    syncStatus = "Fetch failed";
+    syncStatus = tr(STR_FETCH_FAILED);
     syncComplete = true;
     updateRequired = true;
     return;
@@ -494,7 +505,7 @@ void InstapaperActivity::backgroundSyncWork() {
     return a.time > b.time;
   });
 
-  syncStatus = "Synced (" + std::to_string(displayList.size()) + ")";
+  syncStatus = std::string(tr(STR_SYNCED)) + " (" + std::to_string(displayList.size()) + ")";
   syncComplete = true;
   updateRequired = true;
   saveBookmarkCache();
@@ -611,28 +622,28 @@ void InstapaperActivity::render() const {
 
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
-  auto metrics = UITheme::getInstance().getMetrics();
+  const auto metrics = UITheme::getInstance().getMetrics();
 
   // Header with sync status
-  std::string title = "Instapaper";
+  std::string title = tr(STR_INSTAPAPER);
   if (!syncStatus.empty()) {
     title += " [" + syncStatus + "]";
   }
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title.c_str());
 
   if (state == State::ERROR) {
-    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 20, "Error:");
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 20, tr(STR_ERROR_MSG));
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 10, errorMessage.c_str());
-    const auto labels = mappedInput.mapLabels("« Back", "OK", "", "");
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_OK_BUTTON), "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer();
     return;
   }
 
   if (showStopModal) {
-    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 20, "Downloads running.");
-    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 10, "Stop downloads and open offline article?");
-    const auto labels = mappedInput.mapLabels("No", "Yes, Open", "", "");
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 20, tr(STR_DOWNLOADS_RUNNING));
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 10, tr(STR_STOP_DOWNLOADS_CONFIRM));
+    const auto labels = mappedInput.mapLabels(tr(STR_NO), tr(STR_STOP_AND_OPEN), "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer();
     return;
@@ -644,16 +655,16 @@ void InstapaperActivity::render() const {
                       : 0;
 
   // Button hints
-  const char* confirmLabel = "Get";
+  const char* confirmLabel = tr(STR_GET);
   if (!displayList.empty()) {
     const auto& selBm = displayList[sel];
     if (selBm.downloaded) {
-      confirmLabel = "Open";
+      confirmLabel = tr(STR_OPEN);
     } else if (selBm.queued || selBm.downloading) {
-      confirmLabel = "Cancel";
+      confirmLabel = tr(STR_CANCEL);
     }
   }
-  const auto labels = mappedInput.mapLabels("« Back", confirmLabel, "Get 5", "Delete");
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_GET_NEWEST), tr(STR_DELETE));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
@@ -666,7 +677,7 @@ void InstapaperActivity::render() const {
 
   if (displayList.empty()) {
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20,
-                      syncing ? "Syncing..." : "No articles found");
+                      syncing ? tr(STR_SYNCING) : tr(STR_NO_ARTICLES));
     renderer.displayBuffer();
     return;
   }
@@ -683,9 +694,9 @@ void InstapaperActivity::render() const {
       nullptr, nullptr);
 
   // Right-aligned subtitle indicators and progress bar, drawn after drawList.
-  // Font and inset are queried from the theme so Classic and Lyra both align correctly.
+  // Font, inset, and Y-offset are queried from the theme so Classic and Lyra both align correctly.
   {
-    constexpr int kSubtitleOffset = 30;  // hardcoded in both BaseTheme and LyraTheme drawList
+    const int subOff   = GUI.getListSubtitleYOffset(); // px from row top to subtitle baseline
     const int subFont  = GUI.getListSubtitleFontId();  // SMALL_FONT_ID in Lyra, UI_10_FONT_ID in Classic
     const int inset    = GUI.getListTextInset();       // 8px in Lyra (hPaddingInSelection), 0 in Classic
     const int rowH     = metrics.listWithSubtitleRowHeight;
@@ -693,13 +704,13 @@ void InstapaperActivity::render() const {
     const int scrollOff = (sel / pageItems) * pageItems;
     const int leftEdge  = metrics.contentSidePadding + inset;
     const int rightEdge = pageWidth - 5 - metrics.contentSidePadding - inset;
-    const int subH      = rowH - kSubtitleOffset;
+    const int subH      = rowH - subOff;
     const int textH     = renderer.getLineHeight(subFont);
 
     for (int i = scrollOff; i < static_cast<int>(displayList.size()) && i < scrollOff + pageItems; i++) {
       const auto& bm = displayList[i];
       const int visIdx = i - scrollOff;
-      const int subY = contentTop + visIdx * rowH + kSubtitleOffset;
+      const int subY = contentTop + visIdx * rowH + subOff;
       const bool inv = (i != sel);
 
       if (bm.downloading && bm.dlTotal > 0) {
@@ -717,9 +728,9 @@ void InstapaperActivity::render() const {
         renderer.drawText(subFont, rightEdge - pctW, textY, pctStr.c_str(), inv);
       } else {
         const char* label = nullptr;
-        if      (bm.downloading) label = "connecting...";
-        else if (bm.queued)      label = "queued";
-        else if (bm.downloaded)  label = "saved";
+        if      (bm.downloading) label = tr(STR_CONNECTING);
+        else if (bm.queued)      label = tr(STR_QUEUED);
+        else if (bm.downloaded)  label = tr(STR_SAVED);
         if (label) {
           const int w = renderer.getTextWidth(subFont, label);
           renderer.drawText(subFont, rightEdge - w, subY, label, inv);
@@ -811,10 +822,7 @@ void InstapaperActivity::openArticle(int index) {
         };
       }
       auto deleteFn = [currentPath, goBack]() {
-        Storage.remove(currentPath.c_str());
-        Storage.remove((currentPath + ".meta").c_str());
-        const size_t hash = std::hash<std::string>{}(currentPath);
-        Storage.removeDir(("/.crosspoint/html_" + std::to_string(hash)).c_str());
+        deleteArticleFiles(currentPath);
         goBack();  // return to list — no auto-advance after delete
       };
       onOpenBook(currentPath, std::move(advanceFn), std::move(deleteFn));
@@ -822,12 +830,7 @@ void InstapaperActivity::openArticle(int index) {
     return;
   }
 
-  if (bm.queued || bm.downloading) {
-    toggleQueue(index);  // cancel / unqueue
-  } else {
-    toggleQueue(index);  // queue it
-  }
-  updateRequired = true;
+  toggleQueue(index);  // toggleQueue handles queued/downloading/unqueued cases and sets updateRequired
 }
 
 void InstapaperActivity::deleteArticle(int index) {
@@ -860,15 +863,8 @@ void InstapaperActivity::deleteArticle(int index) {
   xSemaphoreGive(renderingMutex);
 
   // File I/O outside the mutex to keep lock time short
-  Storage.remove(path.c_str());
-  Storage.remove((path + ".meta").c_str());
-
-  // Also delete the render cache (same hash formula as WebArticle constructor)
-  const size_t hash = std::hash<std::string>{}(path);
-  const std::string cachePath = std::string("/.crosspoint/html_") + std::to_string(hash);
-  Storage.removeDir(cachePath.c_str());
-
-  LOG_DBG("INS", "Deleted: %s (cache: %s)", path.c_str(), cachePath.c_str());
+  deleteArticleFiles(path);
+  LOG_DBG("INS", "Deleted: %s", path.c_str());
 
   updateRequired = true;
 }
@@ -924,12 +920,12 @@ void InstapaperActivity::backgroundDownloadWork() {
     }
     // Transient failure: leave downloadQueue + queued flags intact.
     // loop() will auto-restart this task once the user dismisses the error.
-    xSemaphoreGive(renderingMutex);
-
     if (!abortDownload) {
       state = State::ERROR;
-      errorMessage = "WiFi not available";
+      errorMessage = tr(STR_WIFI_CONN_FAILED);
     }
+    xSemaphoreGive(renderingMutex);
+
     abortDownload = false;
     updateRequired = true;
     return;
