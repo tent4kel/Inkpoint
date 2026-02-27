@@ -27,7 +27,9 @@
 #include "activities/home/MyLibraryActivity.h"
 #include "activities/home/RecentBooksActivity.h"
 #include "activities/network/CrossPointWebServerActivity.h"
+#include "activities/reader/HtmlReaderActivity.h"
 #include "activities/reader/ReaderActivity.h"
+#include <WebArticle.h>
 #include "activities/settings/SettingsActivity.h"
 #include "activities/util/FullScreenMessageActivity.h"
 #include "components/UITheme.h"
@@ -255,15 +257,32 @@ void onGoToBrowser() {
 }
 
 void onGoToInstapaper();
-void onGoToReaderFromInstapaper(const std::string& initialEpubPath) {
+void onGoHome();
+
+void onGoToReaderFromInstapaper(const std::string& path,
+                                 std::function<void()> onAdvance,
+                                 std::function<void()> onDeleteAndAdvance) {
   exitActivity();
-  enterNewActivity(
-      new ReaderActivity(renderer, mappedInputManager, initialEpubPath, onGoToInstapaper, onGoToMyLibraryWithPath));
+  auto wa = std::make_unique<WebArticle>(path, "/.crosspoint");
+  if (!wa->load()) {
+    onGoToInstapaper();
+    return;
+  }
+  enterNewActivity(new HtmlReaderActivity(
+      renderer, mappedInputManager, std::move(wa),
+      onGoToInstapaper,          // onGoBack  — back button → article list
+      onGoHome,                  // onGoHome  — long-press → home screen
+      std::move(onAdvance),
+      std::move(onDeleteAndAdvance)));
 }
 
 void onGoToInstapaper() {
   exitActivity();
-  enterNewActivity(new InstapaperActivity(renderer, mappedInputManager, onGoHome, onGoToReaderFromInstapaper));
+  enterNewActivity(new InstapaperActivity(
+      renderer, mappedInputManager, onGoHome, onGoToInstapaper,
+      [](const std::string& path, std::function<void()> adv, std::function<void()> del) {
+        onGoToReaderFromInstapaper(path, std::move(adv), std::move(del));
+      }));
 }
 
 void onGoHome() {
