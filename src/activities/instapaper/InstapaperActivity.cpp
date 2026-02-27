@@ -19,6 +19,10 @@
 static int  s_savedSelector   = 0;
 static std::string s_pendingOpenPath;  // non-empty → auto-open this article on next enter
 
+void InstapaperActivity::setPendingOpenPath(const std::string& path) {
+  s_pendingOpenPath = path;
+}
+
 namespace {
 static std::string extractDomain(const std::string& url) {
   size_t s = url.find("://");

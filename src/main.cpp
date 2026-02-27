@@ -26,6 +26,7 @@
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
+#include "util/StringUtils.h"
 
 HalDisplay display;
 HalGPIO gpio;
