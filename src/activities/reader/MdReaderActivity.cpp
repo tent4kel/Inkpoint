@@ -400,9 +400,7 @@ void MdReaderActivity::renderContents(std::unique_ptr<Page> page, const int orie
   }
 
   // Grayscale anti-aliasing pass
-  if (SETTINGS.textAntiAliasing) {
-    renderer.storeBwBuffer();
-
+  if (SETTINGS.textAntiAliasing && renderer.storeBwBuffer()) {
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
     page->render(renderer, cachedFontId, orientedMarginLeft, orientedMarginTop);
