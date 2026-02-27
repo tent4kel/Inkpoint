@@ -470,21 +470,21 @@ void AnkiActivity::renderScreen() {
                               ? m.top + (vpHeight - cardContentHeight) / 2
                               : m.top;
 
-      renderer.storeBwBuffer();
+      if (renderer.storeBwBuffer()) {
+        renderer.clearScreen(0x00);
+        renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
+        cardPages[currentCardPage]->render(renderer, cachedFontId, m.left, yOffset);
+        renderer.copyGrayscaleLsbBuffers();
 
-      renderer.clearScreen(0x00);
-      renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
-      cardPages[currentCardPage]->render(renderer, cachedFontId, m.left, yOffset);
-      renderer.copyGrayscaleLsbBuffers();
+        renderer.clearScreen(0x00);
+        renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
+        cardPages[currentCardPage]->render(renderer, cachedFontId, m.left, yOffset);
+        renderer.copyGrayscaleMsbBuffers();
 
-      renderer.clearScreen(0x00);
-      renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
-      cardPages[currentCardPage]->render(renderer, cachedFontId, m.left, yOffset);
-      renderer.copyGrayscaleMsbBuffers();
-
-      renderer.displayGrayBuffer();
-      renderer.setRenderMode(GfxRenderer::BW);
-      renderer.restoreBwBuffer();
+        renderer.displayGrayBuffer();
+        renderer.setRenderMode(GfxRenderer::BW);
+        renderer.restoreBwBuffer();
+      }
     }
   }
 }
