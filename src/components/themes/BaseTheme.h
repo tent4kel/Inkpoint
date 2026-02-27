@@ -144,5 +144,6 @@ class BaseTheme {
   virtual void drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth) const;
   virtual void drawKeyboardKey(const GfxRenderer& renderer, Rect rect, const char* label, const bool isSelected) const;
   [[nodiscard]] virtual int getListSubtitleFontId() const { return UI_10_FONT_ID; }
-  [[nodiscard]] virtual int getListTextInset() const { return 0; }  // extra horizontal padding inside selection box
+  [[nodiscard]] virtual int getListTextInset() const { return 0; }        // extra horizontal padding inside selection box
+  [[nodiscard]] virtual int getListSubtitleYOffset() const { return 30; } // px from row top to subtitle baseline
 };

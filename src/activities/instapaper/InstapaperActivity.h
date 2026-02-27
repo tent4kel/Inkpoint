@@ -49,12 +49,17 @@ class InstapaperActivity final : public Activity {
   TaskHandle_t downloadTaskHandle = nullptr;
   SemaphoreHandle_t renderingMutex = nullptr;
   ButtonNavigator buttonNavigator;
-  bool updateRequired = false;
+  // Flags written from background tasks; volatile prevents the compiler from
+  // caching them in a register across scheduling points.
+  volatile bool updateRequired = false;
+  volatile bool syncing = false;
+  volatile bool syncComplete = false;
 
-  State state = State::BROWSING;
+  State state = State::BROWSING;  // written only under renderingMutex (except onEnter/onExit)
   std::vector<DisplayBookmark> displayList;
   int selectorIndex = 0;
-  std::string errorMessage;
+  std::string errorMessage;  // written only under renderingMutex
+  std::string syncStatus;    // written only under renderingMutex (or before task start)
 
   std::vector<int> downloadQueue;       // ordered displayList indices to download
   volatile int activeDownloadIdx = -1;  // displayList index being downloaded (-1 = none)
@@ -62,9 +67,6 @@ class InstapaperActivity final : public Activity {
   bool showStopModal = false;           // "stop downloads + open offline?" overlay
   int pendingOpenIdx = -1;              // index to open when user confirms modal
 
-  bool syncing = false;
-  bool syncComplete = false;
-  std::string syncStatus;
 
   static void taskTrampoline(void* param);
   [[noreturn]] void displayTaskLoop();
