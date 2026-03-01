@@ -503,7 +503,7 @@ void InstapaperActivity::backgroundSyncWork() {
   updateRequired = true;
   LOG_INF("INS", "Fetch: start — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   std::vector<InstapaperBookmark> apiBookmarks;
-  if (!InstapaperClient::listBookmarks(25, apiBookmarks)) {
+  if (!InstapaperClient::listBookmarks(30, apiBookmarks)) {
     LOG_ERR("INS", "Fetch: failed — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     syncStatus = tr(STR_FETCH_FAILED);
     syncComplete = true;
@@ -520,14 +520,28 @@ void InstapaperActivity::backgroundSyncWork() {
     std::string sanitizedTitle = StringUtils::sanitizeFilename(apiBm.title);
     std::string domain = extractDomain(apiBm.url);
     bool found = false;
+    // Match by bookmarkId first — reliable even when the title has changed.
     for (auto& existing : displayList) {
-      if (existing.title == sanitizedTitle) {
-        existing.bookmarkId = apiBm.bookmarkId;
+      if (!existing.bookmarkId.empty() && existing.bookmarkId == apiBm.bookmarkId) {
+        existing.title = sanitizedTitle;
         existing.url = apiBm.url;
         existing.time = apiBm.time;
         if (!domain.empty()) existing.source = domain;
         found = true;
         break;
+      }
+    }
+    // Fall back to title match for locally-scanned SD articles (no bookmarkId yet).
+    if (!found) {
+      for (auto& existing : displayList) {
+        if (existing.bookmarkId.empty() && existing.title == sanitizedTitle) {
+          existing.bookmarkId = apiBm.bookmarkId;
+          existing.url = apiBm.url;
+          existing.time = apiBm.time;
+          if (!domain.empty()) existing.source = domain;
+          found = true;
+          break;
+        }
       }
     }
     if (!found) {
@@ -542,57 +556,82 @@ void InstapaperActivity::backgroundSyncWork() {
     }
   }
 
-  // Prune non-downloaded entries removed from Instapaper's reading list.
-  // After a successful fetch, any entry with a bookmarkId that does NOT appear
-  // in the API response was archived/deleted on Instapaper. Keeping it just
-  // grows the list indefinitely and wastes the heap footprint of each entry.
-  // Downloaded articles are retained regardless — they may still be read offline.
+  // Prune entries removed from Instapaper's reading list.
+  // Non-downloaded entries are silently dropped; downloaded ones are queued for
+  // archive or deletion according to the user's "Removed articles" setting.
   {
     std::vector<std::string> apiIds;
     apiIds.reserve(apiBookmarks.size());
     for (const auto& apiBm : apiBookmarks) apiIds.push_back(apiBm.bookmarkId);
 
+    bool doArchive = INSTAPAPER_STORE.getArchiveOldArticles();
+    std::vector<std::string> toCleanup;  // paths of downloaded non-API articles
     int pruned = 0;
+
     auto it = displayList.begin();
     while (it != displayList.end()) {
-      if (!it->downloaded && !it->bookmarkId.empty()) {
+      if (!it->bookmarkId.empty()) {
         bool inApi = false;
-        for (const auto& id : apiIds) {
-          if (id == it->bookmarkId) { inApi = true; break; }
-        }
+        for (const auto& id : apiIds) { if (id == it->bookmarkId) { inApi = true; break; } }
         if (!inApi) {
+          if (it->downloaded) {
+            toCleanup.push_back(getArticlePath(*it));
+          } else {
+            pruned++;
+          }
           it = displayList.erase(it);
-          pruned++;
           continue;
         }
       }
       ++it;
     }
-    if (pruned > 0) {
-      LOG_INF("INS", "Pruned %d stale unread entry/entries not in API response", pruned);
-      // Rebuild downloadQueue indices: displayList was compacted so saved
-      // indices are stale. The download task is gated on syncComplete (not yet
-      // set) so modifying downloadQueue here is race-free.
+
+    if (selectorIndex >= static_cast<int>(displayList.size()))
+      selectorIndex = std::max(0, static_cast<int>(displayList.size()) - 1);
+
+    if (pruned > 0 || !toCleanup.empty()) {
+      // Rebuild downloadQueue — indices are stale after erase
       downloadQueue.clear();
       for (int i = 0; i < static_cast<int>(displayList.size()); i++) {
         if (displayList[i].queued) downloadQueue.push_back(i);
       }
+      LOG_INF("INS", "Pruned %d unread + %d downloaded non-API entries",
+              pruned, static_cast<int>(toCleanup.size()));
+    }
+
+    // Sort by time descending (newest first, time=0 at the end)
+    std::sort(displayList.begin(), displayList.end(), [](const DisplayBookmark& a, const DisplayBookmark& b) {
+      if (a.time == 0 && b.time == 0) return false;
+      if (a.time == 0) return false;
+      if (b.time == 0) return true;
+      return a.time > b.time;
+    });
+
+    syncStatus = std::string(tr(STR_SYNCED)) + " (" + std::to_string(displayList.size()) + ")";
+    syncComplete = true;
+    updateRequired = true;
+    saveBookmarkCache();
+    xSemaphoreGive(renderingMutex);
+
+    // File operations — outside mutex, after saveBookmarkCache has persisted the pruned list
+    if (!toCleanup.empty()) {
+      const std::string archiveFolder = INSTAPAPER_STORE.getDownloadFolder() + "/archive";
+      if (doArchive) Storage.mkdir(archiveFolder.c_str());
+      for (const auto& path : toCleanup) {
+        if (doArchive) {
+          const size_t slash = path.rfind('/');
+          const std::string fname = (slash != std::string::npos) ? path.substr(slash) : ("/" + path);
+          Storage.rename(path.c_str(), (archiveFolder + fname).c_str());
+        } else {
+          Storage.remove(path.c_str());
+        }
+        // Sidecar and render cache always purged (derived data)
+        Storage.remove((path + ".meta").c_str());
+        const size_t hash = std::hash<std::string>{}(path);
+        Storage.removeDir(("/.crosspoint/html_" + std::to_string(hash)).c_str());
+      }
     }
   }
-
-  // Sort by time descending (newest first, time=0 at the end)
-  std::sort(displayList.begin(), displayList.end(), [](const DisplayBookmark& a, const DisplayBookmark& b) {
-    if (a.time == 0 && b.time == 0) return false;
-    if (a.time == 0) return false;
-    if (b.time == 0) return true;
-    return a.time > b.time;
-  });
-
-  syncStatus = std::string(tr(STR_SYNCED)) + " (" + std::to_string(displayList.size()) + ")";
-  syncComplete = true;
-  updateRequired = true;
-  saveBookmarkCache();
-  xSemaphoreGive(renderingMutex);
 
   LOG_INF("INS", "Sync done: %d items — free=%u maxAlloc=%u", static_cast<int>(displayList.size()),
           ESP.getFreeHeap(), ESP.getMaxAllocHeap());
@@ -679,12 +718,12 @@ void InstapaperActivity::loop() {
     // Restart download task if items are still queued but the task died (e.g., transient WiFi failure).
     // Queued items are preserved on non-abort failure; this watchdog re-launches the task automatically
     // once the user is back in BROWSING state (after dismissing any error or just waiting).
-    // Only spawn the download task after sync has fully completed (WiFi is up,
-    // fetch done). Spawning during sync is wasteful (task just blocks on
-    // `syncing`) and harmful: the 8KB stack allocation fragments the heap
-    // before WiFi connects, reducing maxAlloc enough to break TLS.
+    // Guard on !syncing (set in trampoline after backgroundSyncWork returns), not just syncComplete.
+    // syncComplete is set while renderingMutex and the SPI bus mutex are still held by the sync task;
+    // spawning the download task at that moment causes Storage.mkdir() to contend for the SPI mutex,
+    // corrupting FreeRTOS priority-inheritance bookkeeping → xTaskPriorityDisinherit assert.
     if (!downloadQueue.empty() && downloadTaskHandle == nullptr && !abortDownload &&
-        syncComplete) {
+        syncComplete && !syncing) {
       xTaskCreate(&InstapaperActivity::downloadTaskTrampoline, "InstaDownload", 8192, this, 1, &downloadTaskHandle);
     }
 
@@ -1093,11 +1132,16 @@ void InstapaperActivity::backgroundDownloadWork() {
     updateRequired = true;
 
     // Safety: if heap is unexpectedly low after a failed download, stop early.
-    // With clean WiFi lifecycle (one on/off per session) this should not occur
-    // in normal use, but guard against it anyway to avoid cascading failures.
+    // Clear downloadQueue so the loop() watchdog does not immediately respawn
+    // this task — the fragmented heap would just fail again. Items remain
+    // queued in displayList (queued=true) and are persisted by saveQueueFile()
+    // on exit, so the next session (clean heap) will retry them.
     if (!abortDownload && !bmCopy.downloaded && ESP.getMaxAllocHeap() < 50000) {
       LOG_ERR("INS", "Download: heap too low (maxAlloc=%u), deferring %d item(s) to next session",
               ESP.getMaxAllocHeap(), static_cast<int>(downloadQueue.size()));
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      downloadQueue.clear();
+      xSemaphoreGive(renderingMutex);
       break;
     }
 

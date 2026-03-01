@@ -194,9 +194,9 @@ bool InstapaperClient::listBookmarks(int limit, std::vector<InstapaperBookmark>&
   std::string body = buildBody(params);
   std::string response;
 
-  // 20 KB cap: 25 bookmarks × ~600 bytes JSON each ≈ 15 KB. Hard cap prevents
+  // 24 KB cap: 30 bookmarks × ~600 bytes JSON each ≈ 18 KB. Hard cap prevents
   // unbounded reallocation on the heap.
-  constexpr size_t MAX_BOOKMARK_LIST = 20480;
+  constexpr size_t MAX_BOOKMARK_LIST = 24576;
   // Allow up to 3 attempts.  The first TLS connection after a fresh WiFi
   // bring-up often times out (~8 s) because DNS, ARP, and the TCP stack are
   // cold.  Subsequent attempts reuse cached DNS/ARP and succeed quickly.

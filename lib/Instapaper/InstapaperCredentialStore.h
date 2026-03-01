@@ -9,6 +9,7 @@ class InstapaperCredentialStore {
   std::string token;
   std::string tokenSecret;
   std::string downloadFolder;
+  bool archiveOldArticles = false;
 
   InstapaperCredentialStore() : downloadFolder("/instapaper") {}
 
@@ -38,6 +39,9 @@ class InstapaperCredentialStore {
 
   void setDownloadFolder(const std::string& folder) { downloadFolder = folder; }
   const std::string& getDownloadFolder() const { return downloadFolder; }
+
+  void setArchiveOldArticles(bool v) { archiveOldArticles = v; }
+  bool getArchiveOldArticles() const { return archiveOldArticles; }
 };
 
 #define INSTAPAPER_STORE InstapaperCredentialStore::getInstance()
