@@ -1,6 +1,7 @@
 #include "InstapaperSettingsActivity.h"
 
 #include <GfxRenderer.h>
+#include <I18n.h>
 #include <Logging.h>
 
 #include <WiFi.h>
@@ -16,9 +17,9 @@
 
 namespace {
 constexpr int MENU_ITEMS_AUTH = 3;    // Username, Password, Authenticate
-constexpr int MENU_ITEMS_AUTHED = 1;  // Clear credentials
+constexpr int MENU_ITEMS_AUTHED = 2;  // Removed articles, Clear credentials
 const char* menuNamesAuth[] = {"Username", "Password", "Authenticate"};
-const char* menuNamesAuthed[] = {"Clear Credentials"};
+const char* menuNamesAuthed[] = {"Removed articles", "Clear Credentials"};
 }  // namespace
 
 void InstapaperSettingsActivity::onEnter() {
@@ -60,6 +61,11 @@ void InstapaperSettingsActivity::loop() {
 void InstapaperSettingsActivity::handleSelection() {
   if (INSTAPAPER_STORE.hasCredentials()) {
     if (selectedIndex == 0) {
+      bool cur = INSTAPAPER_STORE.getArchiveOldArticles();
+      INSTAPAPER_STORE.setArchiveOldArticles(!cur);
+      INSTAPAPER_STORE.saveToFile();
+      updateRequired = true;
+    } else if (selectedIndex == 1) {
       INSTAPAPER_STORE.clearCredentials();
       selectedIndex = 0;
       statusMessage = "Credentials cleared";
@@ -169,10 +175,13 @@ void InstapaperSettingsActivity::render(RenderLock&&) {
     const int settingY = 60 + i * 30;
     const bool isSelected = (i == selectedIndex);
 
-    renderer.drawText(UI_10_FONT_ID, 20, settingY, menuNames[i], !isSelected);
+    const char* label = (hasAuth && i == 0) ? tr(STR_INSTA_REMOVED_ARTICLES) : menuNames[i];
+    renderer.drawText(UI_10_FONT_ID, 20, settingY, label, !isSelected);
 
     const char* status = "";
-    if (!hasAuth) {
+    if (hasAuth && i == 0) {
+      status = INSTAPAPER_STORE.getArchiveOldArticles() ? "Archive" : "Delete";
+    } else if (!hasAuth) {
       if (i == 0) {
         status = pendingUsername.empty() ? "[Not Set]" : "[Set]";
       } else if (i == 1) {

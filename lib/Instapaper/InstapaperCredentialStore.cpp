@@ -7,7 +7,7 @@
 InstapaperCredentialStore InstapaperCredentialStore::instance;
 
 namespace {
-constexpr uint8_t FILE_VERSION = 2;
+constexpr uint8_t FILE_VERSION = 3;
 constexpr char CRED_FILE[] = "/.crosspoint/instapaper.bin";
 constexpr uint8_t OBFUSCATION_KEY[] = {0x49, 0x6E, 0x73, 0x74, 0x61, 0x70, 0x61, 0x70};  // "Instapap"
 constexpr size_t KEY_LENGTH = sizeof(OBFUSCATION_KEY);
@@ -46,6 +46,7 @@ bool InstapaperCredentialStore::saveToFile() const {
   serialization::writeString(file, obfSecret);
 
   serialization::writeString(file, downloadFolder);
+  serialization::writePod(file, archiveOldArticles);
 
   file.close();
   Serial.printf("[%lu] [IPS] Saved Instapaper credentials\n", millis());
@@ -100,6 +101,12 @@ bool InstapaperCredentialStore::loadFromFile() {
     serialization::readString(file, downloadFolder);
   } else {
     downloadFolder = "/instapaper";
+  }
+
+  if (file.available()) {
+    serialization::readPod(file, archiveOldArticles);
+  } else {
+    archiveOldArticles = false;
   }
 
   file.close();
