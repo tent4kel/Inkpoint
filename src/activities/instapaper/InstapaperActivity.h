@@ -71,6 +71,9 @@ class InstapaperActivity final : public ActivityWithSubactivity {
   volatile bool abortDownload = false;
   bool showStopModal = false;           // "stop downloads + open offline?" overlay
   int pendingOpenIdx = -1;              // index to open when user confirms modal
+  bool goingToReader = false;           // set before onOpenBook; suppresses WiFi.mode(WIFI_OFF) in onExit
+  bool exitingActivity = false;         // set in onExit() to re-queue mid-download items (not user-cancel)
+  bool pendingRestart = false;          // force-sync restart: wait for tasks to exit cleanly then restart
 
   const std::function<void()> onGoHome;
   const std::function<void()> onGoToSelf;
@@ -91,7 +94,6 @@ class InstapaperActivity final : public ActivityWithSubactivity {
 
   static void downloadTaskTrampoline(void* param);
   void backgroundDownloadWork();
-  bool ensureWifiAndNtp();
 
   void openArticle(int index);
   void deleteArticle(int index);
