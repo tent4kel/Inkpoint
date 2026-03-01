@@ -930,7 +930,7 @@ void InstapaperActivity::toggleQueue(int index) {
     // Advance cursor so user can queue the next article
     int nextIdx = ButtonNavigator::nextIndex(index, displayList.size());
     if (nextIdx != index) selectorIndex = nextIdx;
-    bool needStart = (downloadTaskHandle == nullptr);
+    bool needStart = (downloadTaskHandle == nullptr && !syncing);
     xSemaphoreGive(renderingMutex);
     if (needStart) {
       abortDownload = false;
