@@ -15,19 +15,23 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "InstapaperCredentialStore.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "activities/boot_sleep/BootActivity.h"
 #include "activities/boot_sleep/SleepActivity.h"
 #include "activities/browser/OpdsBookBrowserActivity.h"
+#include "activities/instapaper/InstapaperActivity.h"
 #include "activities/home/HomeActivity.h"
 #include "activities/home/MyLibraryActivity.h"
 #include "activities/home/RecentBooksActivity.h"
 #include "activities/anki/AnkiActivity.h"
 #include "activities/anki/AnkiDeckExplorerActivity.h"
 #include "activities/network/CrossPointWebServerActivity.h"
+#include "activities/reader/HtmlReaderActivity.h"
 #include "activities/reader/ReaderActivity.h"
+#include <WebArticle.h>
 #include "activities/settings/SettingsActivity.h"
 #include "activities/util/FullScreenMessageActivity.h"
 #include "anki/AnkiSessionManager.h"
@@ -36,6 +40,10 @@
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
 #include "util/StringUtils.h"
+
+// Survives ESP.restart() but not power-off. Set by InstapaperActivity's
+// force-sync action to skip Home and re-enter Instapaper after reboot.
+RTC_DATA_ATTR bool rtcGoToInstapaper = false;
 
 HalDisplay display;
 HalGPIO gpio;
@@ -218,6 +226,7 @@ void enterDeepSleep() {
 }
 
 void onGoHome();
+void onGoToInstapaper();
 void onGoToMyLibraryWithPath(const std::string& path);
 void onGoToRecentBooks();
 void onGoToAnki(const std::string& csvPath) {
@@ -249,6 +258,16 @@ void onGoToReader(const std::string& initialEpubPath) {
     return;
   }
   const std::string bookPath = initialEpubPath;  // Copy before exitActivity() invalidates the reference
+
+  // Route Instapaper HTML files through InstapaperActivity so back-button and
+  // advance/delete callbacks work correctly (e.g. opening from Recent Books or boot-resume).
+  if (StringUtils::checkFileExtension(bookPath, ".html") &&
+      bookPath.find(INSTAPAPER_STORE.getDownloadFolder()) == 0) {
+    InstapaperActivity::setPendingOpenPath(bookPath);
+    onGoToInstapaper();
+    return;
+  }
+
   exitActivity();
   enterNewActivity(new ReaderActivity(renderer, mappedInputManager, bookPath, onGoHome, onGoToMyLibraryWithPath));
 }
@@ -283,10 +302,37 @@ void onGoToBrowser() {
   enterNewActivity(new OpdsBookBrowserActivity(renderer, mappedInputManager, onGoHome));
 }
 
+void onGoToReaderFromInstapaper(const std::string& path,
+                                 std::function<void()> onAdvance,
+                                 std::function<void()> onDeleteAndAdvance) {
+  exitActivity();
+  auto wa = std::make_unique<WebArticle>(path, "/.crosspoint");
+  if (!wa->load()) {
+    onGoToInstapaper();
+    return;
+  }
+  enterNewActivity(new HtmlReaderActivity(
+      renderer, mappedInputManager, std::move(wa),
+      onGoToInstapaper,          // onGoBack  — back button → article list
+      onGoHome,                  // onGoHome  — long-press → home screen
+      std::move(onAdvance),
+      std::move(onDeleteAndAdvance)));
+}
+
+void onGoToInstapaper() {
+  exitActivity();
+  enterNewActivity(new InstapaperActivity(
+      renderer, mappedInputManager, onGoHome, onGoToInstapaper,
+      [](const std::string& path, std::function<void()> adv, std::function<void()> del) {
+        onGoToReaderFromInstapaper(path, std::move(adv), std::move(del));
+      }));
+}
+
 void onGoHome() {
   exitActivity();
   enterNewActivity(new HomeActivity(renderer, mappedInputManager, onGoToReader, onGoToMyLibrary, onGoToRecentBooks,
-                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser, onGoToAnkiExplorer));
+                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser, onGoToAnkiExplorer,
+                                    onGoToInstapaper));
 }
 
 void setupDisplayAndFonts() {
@@ -350,6 +396,7 @@ void setup() {
   I18N.loadSettings();
   KOREADER_STORE.loadFromFile();
   ANKI_SESSION.load();
+  INSTAPAPER_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
@@ -382,9 +429,19 @@ void setup() {
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
 
+  // Force-sync restart from InstapaperActivity: skip Home and go straight to
+  // Instapaper with a fresh heap. Checked first so it takes priority regardless
+  // of what APP_STATE has saved (e.g. lastSleepFromReader=true from a previous
+  // reading session would otherwise route us to the reader instead).
+  LOG_INF("MAIN", "Boot routing: rtcGoToInstapaper=%d openEpubPath='%s' lastSleepFromReader=%d",
+          (int)rtcGoToInstapaper, APP_STATE.openEpubPath.c_str(), (int)APP_STATE.lastSleepFromReader);
+  if (rtcGoToInstapaper) {
+    rtcGoToInstapaper = false;
+    LOG_INF("MAIN", "Boot routing: → Instapaper (force-sync restart)");
+    onGoToInstapaper();
   // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
   // crashed (indicated by readerActivityLoadCount > 0)
-  if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
+  } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
       mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
     onGoHome();
   } else {
