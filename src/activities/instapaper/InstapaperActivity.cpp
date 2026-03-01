@@ -542,6 +542,44 @@ void InstapaperActivity::backgroundSyncWork() {
     }
   }
 
+  // Prune non-downloaded entries removed from Instapaper's reading list.
+  // After a successful fetch, any entry with a bookmarkId that does NOT appear
+  // in the API response was archived/deleted on Instapaper. Keeping it just
+  // grows the list indefinitely and wastes the heap footprint of each entry.
+  // Downloaded articles are retained regardless — they may still be read offline.
+  {
+    std::vector<std::string> apiIds;
+    apiIds.reserve(apiBookmarks.size());
+    for (const auto& apiBm : apiBookmarks) apiIds.push_back(apiBm.bookmarkId);
+
+    int pruned = 0;
+    auto it = displayList.begin();
+    while (it != displayList.end()) {
+      if (!it->downloaded && !it->bookmarkId.empty()) {
+        bool inApi = false;
+        for (const auto& id : apiIds) {
+          if (id == it->bookmarkId) { inApi = true; break; }
+        }
+        if (!inApi) {
+          it = displayList.erase(it);
+          pruned++;
+          continue;
+        }
+      }
+      ++it;
+    }
+    if (pruned > 0) {
+      LOG_INF("INS", "Pruned %d stale unread entry/entries not in API response", pruned);
+      // Rebuild downloadQueue indices: displayList was compacted so saved
+      // indices are stale. The download task is gated on syncComplete (not yet
+      // set) so modifying downloadQueue here is race-free.
+      downloadQueue.clear();
+      for (int i = 0; i < static_cast<int>(displayList.size()); i++) {
+        if (displayList[i].queued) downloadQueue.push_back(i);
+      }
+    }
+  }
+
   // Sort by time descending (newest first, time=0 at the end)
   std::sort(displayList.begin(), displayList.end(), [](const DisplayBookmark& a, const DisplayBookmark& b) {
     if (a.time == 0 && b.time == 0) return false;
