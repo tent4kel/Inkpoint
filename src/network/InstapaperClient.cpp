@@ -194,16 +194,15 @@ bool InstapaperClient::listBookmarks(int limit, std::vector<InstapaperBookmark>&
   std::string body = buildBody(params);
   std::string response;
 
-  // 20 KB cap: 25 bookmarks × ~600 bytes JSON each ≈ 15 KB. Hard cap prevents unbounded
-  // reallocation on a fragmented heap (TLS ~34 KB still live during streaming).
-  constexpr size_t MAX_BOOKMARK_LIST = 20480;
-  // maxRetries=1: single attempt, no retry.
-  // Retrying listBookmarks creates a fresh TLS context while the heap is still
-  // fragmented from the first attempt (~26 KB TLS + various mbedTLS buffers not
-  // immediately freed). A second TLS on top of the residual fragments easily
-  // exhausts the 233 KB heap, dropping MinFree to < 2 KB. Fail-fast here; the
-  // next Instapaper entry will re-sync.
-  bool ok = withRetries([&]() { return HttpDownloader::postUrl(url, body, authHeader, response, MAX_BOOKMARK_LIST); }, 1);
+  // 24 KB cap: 30 bookmarks × ~600 bytes JSON each ≈ 18 KB. Hard cap prevents
+  // unbounded reallocation on the heap.
+  constexpr size_t MAX_BOOKMARK_LIST = 24576;
+  // Allow up to 3 attempts.  The first TLS connection after a fresh WiFi
+  // bring-up often times out (~8 s) because DNS, ARP, and the TCP stack are
+  // cold.  Subsequent attempts reuse cached DNS/ARP and succeed quickly.
+  // With a clean single-on/off WiFi lifecycle the heap is not fragmented
+  // between retries, so a fresh TLS context is safe to allocate.
+  bool ok = withRetries([&]() { return HttpDownloader::postUrl(url, body, authHeader, response, MAX_BOOKMARK_LIST); });
   if (!ok) {
     LOG_ERR("IPC", "List bookmarks failed");
     return false;
@@ -272,8 +271,12 @@ HttpDownloader::DownloadError InstapaperClient::getArticleToFile(const std::stri
   HttpDownloader::DownloadError result = HttpDownloader::DownloadError::HTTP_ERROR;
   withRetries([&]() {
     result = HttpDownloader::postUrlToFile(url, body, authHeader, destPath, progress, abortCheck);
-    // Don't retry on abort — the user explicitly cancelled
-    return result == HttpDownloader::DownloadError::OK || result == HttpDownloader::DownloadError::ABORTED;
+    // Stop retrying on success, on explicit abort, or if abortCheck fires —
+    // a connection error (-5) after WiFi.disconnect() is an intentional abort,
+    // not a transient network failure, and must not trigger a retry.
+    return result == HttpDownloader::DownloadError::OK ||
+           result == HttpDownloader::DownloadError::ABORTED ||
+           (abortCheck && abortCheck());
   });
 
   if (result != HttpDownloader::DownloadError::OK) {

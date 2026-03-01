@@ -1,6 +1,8 @@
 #include "InstapaperActivity.h"
 
+#include <Esp.h>
 #include <GfxRenderer.h>
+#include <esp_sleep.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -18,6 +20,14 @@
 // Persistent state across InstapaperActivity instances
 static int  s_savedSelector   = 0;
 static std::string s_pendingOpenPath;  // non-empty → auto-open this article on next enter
+// Set after first successful fetch; cleared only by ESP.restart(). Subsequent
+// entries skip listBookmarks (heap too fragmented for 15KB response buffer)
+// and only bring up WiFi for downloads.
+static bool s_everSynced = false;
+
+// RTC memory survives ESP.restart() but not power-off. Set before restarting
+// to have the boot sequence navigate straight back to Instapaper.
+extern RTC_DATA_ATTR bool rtcGoToInstapaper;
 
 void InstapaperActivity::setPendingOpenPath(const std::string& path) {
   s_pendingOpenPath = path;
@@ -76,8 +86,11 @@ void InstapaperActivity::onEnter() {
   downloadQueue.clear();
   activeDownloadIdx = -1;
   abortDownload = false;
+  goingToReader = false;
   showStopModal = false;
   pendingOpenIdx = -1;
+  exitingActivity = false;
+  pendingRestart = false;
   selectorIndex = s_savedSelector;
   errorMessage.clear();
   syncing = false;
@@ -115,35 +128,32 @@ void InstapaperActivity::onExit() {
   s_savedSelector = selectorIndex;
   ActivityWithSubactivity::onExit();
 
-  abortDownload = true;  // signal any in-progress download/sync to stop
+  exitingActivity = true;  // tell download task to re-queue mid-download item (not user-cancel)
+  abortDownload = true;    // signal any in-progress download/sync to stop
 
-  // Disconnect WiFi before killing tasks. This forces any blocked http.POST() /
-  // readBytes() in the download or sync task to return an error immediately,
-  // so those tasks call http.end() (closing the socket cleanly) and exit via
-  // their trampoline. Killing a task that owns an open lwip connection leaves
-  // a dangling PCB that crashes the lwip timer task on the next tick.
+  // Disconnect from AP — closes open TCP connections and unblocks tasks waiting
+  // on network I/O.  Do NOT call WiFi.mode(WIFI_OFF) yet: if a task is
+  // mid-write inside lwIP/mbedTLS, powering off the radio from a second task
+  // causes a concurrent-lwIP crash.
   if (WiFi.status() == WL_CONNECTED) {
     WiFi.disconnect(false);
-    delay(100);
-    WiFi.mode(WIFI_OFF);
+    delay(200);  // give lwIP time to send FIN/RST
   }
 
   // Wait up to 10 s for download/sync tasks to exit cleanly on their own
   // (trampoline sets handle to nullptr before vTaskDelete(nullptr)).
   //
-  // Why 10 s (not the old 2 s):
+  // Why 10 s:
   //   • DNS cleanup: WiFi teardown causes a mid-DNS query to fail within 1 s
   //     (DNS_TMR_INTERVAL). The task then unblocks, cleans up, and exits.
-  //   • TLS cleanup: if a task is mid-TLS-handshake or mid-HTTP-POST when
-  //     WiFi.mode(WIFI_OFF) fires, lwip closes all TCP connections. mbedTLS
-  //     sees the socket error on the next read/write and returns an error.
-  //     The HTTP client's end()/destructor then frees the ~26 KB TLS context.
-  //     This chain takes up to a few seconds. If we vTaskDelete before the
-  //     destructor runs, the TLS heap is leaked — causing the next Instapaper
-  //     session to start with a severely fragmented heap.
+  //   • TLS cleanup: mbedTLS must free the ~26 KB TLS context before the task
+  //     exits. If we vTaskDelete before the destructor runs, that heap is
+  //     leaked — causing the next session to start with a fragmented heap.
   for (int i = 0; i < 100 && (downloadTaskHandle || syncTaskHandle); i++) {
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
+
+  WiFi.mode(WIFI_OFF);
 
   xSemaphoreTake(renderingMutex, portMAX_DELAY);
   // Persist queued/in-progress items so the next enter auto-restarts downloads.
@@ -385,6 +395,7 @@ void InstapaperActivity::startBackgroundSync() {
 }
 
 void InstapaperActivity::backgroundSyncWork() {
+  LOG_INF("INS", "Sync start — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   // Grace period: wait up to 2 s before touching the network. If the user
   // exits during this window, abortDownload is set and we return without ever
   // registering a DNS callback. This prevents the lwip dns_timeout_cb crash:
@@ -397,9 +408,10 @@ void InstapaperActivity::backgroundSyncWork() {
   if (abortDownload) return;
 
   // Connect WiFi if not already connected
-  syncStatus = tr(STR_CONNECTING);
-  updateRequired = true;
   if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
+    syncStatus = tr(STR_CONNECTING);
+    updateRequired = true;
+    LOG_INF("INS", "WiFi: connecting...");
     WiFi.mode(WIFI_STA);
     WiFi.begin();
     int attempts = 0;
@@ -408,20 +420,25 @@ void InstapaperActivity::backgroundSyncWork() {
       attempts++;
     }
     if (WiFi.status() != WL_CONNECTED) {
+      LOG_ERR("INS", "WiFi: connect failed after %d ms", attempts * 100);
       syncStatus = tr(STR_WIFI_CONN_FAILED);
       syncComplete = true;
       updateRequired = true;
       return;
     }
+    LOG_INF("INS", "WiFi: up in %d ms — free=%u maxAlloc=%u", attempts * 100, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     // Brief pause: routing stack needs a moment after DHCP before DNS/NTP work reliably
     for (int i = 0; i < 5 && !abortDownload; i++) vTaskDelay(100 / portTICK_PERIOD_MS);
     if (abortDownload) return;
+  } else {
+    LOG_INF("INS", "WiFi: already up, skip connect");
   }
 
   // NTP sync (only if time not already set)
-  syncStatus = tr(STR_NTP);
-  updateRequired = true;
   if (time(nullptr) < 1000000000) {
+    syncStatus = tr(STR_NTP);
+    updateRequired = true;
+    LOG_INF("INS", "NTP: syncing... (t=%lld)", (long long)time(nullptr));
     configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
     int ntpAttempts = 0;
     while (time(nullptr) < 1000000000 && ntpAttempts < 200 && !abortDownload) {
@@ -429,27 +446,35 @@ void InstapaperActivity::backgroundSyncWork() {
       ntpAttempts++;
       if (ntpAttempts == 100) {
         // Re-trigger SNTP after 10 s in case the first attempt stalled
+        LOG_INF("INS", "NTP: 10 s elapsed, retrying with alternate servers");
         configTime(0, 0, "time.google.com", "pool.ntp.org", "time.nist.gov");
       }
     }
     if (time(nullptr) < 1000000000) {
+      LOG_ERR("INS", "NTP: failed after %d ms", ntpAttempts * 100);
       syncStatus = tr(STR_NTP_FAILED);
       syncComplete = true;
       updateRequired = true;
       return;
     }
+    LOG_INF("INS", "NTP: synced in %d ms (t=%lld)", ntpAttempts * 100, (long long)time(nullptr));
+  } else {
+    LOG_INF("INS", "NTP: already set (t=%lld), skip", (long long)time(nullptr));
   }
 
   // Authenticate if needed
   if (!INSTAPAPER_STORE.hasCredentials() && INSTAPAPER_STORE.hasLoginCredentials()) {
     syncStatus = tr(STR_AUTHENTICATING);
     updateRequired = true;
+    LOG_INF("INS", "Auth: starting — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     std::string token, tokenSecret;
     if (InstapaperClient::authenticate(INSTAPAPER_STORE.getUsername(), INSTAPAPER_STORE.getPassword(), token,
                                        tokenSecret)) {
       INSTAPAPER_STORE.setCredentials(token, tokenSecret);
       INSTAPAPER_STORE.saveToFile();
+      LOG_INF("INS", "Auth: success — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     } else {
+      LOG_ERR("INS", "Auth: failed — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
       syncStatus = tr(STR_AUTH_FAILED);
       syncComplete = true;
       updateRequired = true;
@@ -457,16 +482,36 @@ void InstapaperActivity::backgroundSyncWork() {
     }
   }
 
+  // On re-entries within the same boot session, skip listBookmarks. Each
+  // WiFi ON/OFF cycle fragments the heap ~10-15 KB, leaving too little
+  // contiguous memory for the ~15 KB response buffer + TLS handshake.
+  // The cached bookmark list is fresh enough; downloads still proceed via
+  // postUrlToFile which streams to SD without a large response buffer.
+  // A force-sync (Left button → ESP.restart()) gives a clean heap again.
+  if (s_everSynced) {
+    LOG_INF("INS", "Fetch: skip — already synced this boot (free=%u maxAlloc=%u)",
+            ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    syncStatus = std::string(tr(STR_SYNCED)) + " (" + std::to_string(displayList.size()) + ")";
+    syncComplete = true;
+    updateRequired = true;
+    return;
+  }
+  s_everSynced = true;  // Set before attempt: don't retry fetch on next entry
+
   // Fetch bookmarks from API
   syncStatus = tr(STR_FETCHING);
   updateRequired = true;
+  LOG_INF("INS", "Fetch: start — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   std::vector<InstapaperBookmark> apiBookmarks;
-  if (!InstapaperClient::listBookmarks(25, apiBookmarks)) {
+  if (!InstapaperClient::listBookmarks(30, apiBookmarks)) {
+    LOG_ERR("INS", "Fetch: failed — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     syncStatus = tr(STR_FETCH_FAILED);
     syncComplete = true;
     updateRequired = true;
     return;
   }
+  LOG_INF("INS", "Fetch: got %d bookmarks — free=%u maxAlloc=%u", static_cast<int>(apiBookmarks.size()),
+          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
   // Merge API results into displayList
   xSemaphoreTake(renderingMutex, portMAX_DELAY);
@@ -475,14 +520,28 @@ void InstapaperActivity::backgroundSyncWork() {
     std::string sanitizedTitle = StringUtils::sanitizeFilename(apiBm.title);
     std::string domain = extractDomain(apiBm.url);
     bool found = false;
+    // Match by bookmarkId first — reliable even when the title has changed.
     for (auto& existing : displayList) {
-      if (existing.title == sanitizedTitle) {
-        existing.bookmarkId = apiBm.bookmarkId;
+      if (!existing.bookmarkId.empty() && existing.bookmarkId == apiBm.bookmarkId) {
+        existing.title = sanitizedTitle;
         existing.url = apiBm.url;
         existing.time = apiBm.time;
         if (!domain.empty()) existing.source = domain;
         found = true;
         break;
+      }
+    }
+    // Fall back to title match for locally-scanned SD articles (no bookmarkId yet).
+    if (!found) {
+      for (auto& existing : displayList) {
+        if (existing.bookmarkId.empty() && existing.title == sanitizedTitle) {
+          existing.bookmarkId = apiBm.bookmarkId;
+          existing.url = apiBm.url;
+          existing.time = apiBm.time;
+          if (!domain.empty()) existing.source = domain;
+          found = true;
+          break;
+        }
       }
     }
     if (!found) {
@@ -497,21 +556,85 @@ void InstapaperActivity::backgroundSyncWork() {
     }
   }
 
-  // Sort by time descending (newest first, time=0 at the end)
-  std::sort(displayList.begin(), displayList.end(), [](const DisplayBookmark& a, const DisplayBookmark& b) {
-    if (a.time == 0 && b.time == 0) return false;
-    if (a.time == 0) return false;
-    if (b.time == 0) return true;
-    return a.time > b.time;
-  });
+  // Prune entries removed from Instapaper's reading list.
+  // Non-downloaded entries are silently dropped; downloaded ones are queued for
+  // archive or deletion according to the user's "Removed articles" setting.
+  {
+    std::vector<std::string> apiIds;
+    apiIds.reserve(apiBookmarks.size());
+    for (const auto& apiBm : apiBookmarks) apiIds.push_back(apiBm.bookmarkId);
 
-  syncStatus = std::string(tr(STR_SYNCED)) + " (" + std::to_string(displayList.size()) + ")";
-  syncComplete = true;
-  updateRequired = true;
-  saveBookmarkCache();
-  xSemaphoreGive(renderingMutex);
+    bool doArchive = INSTAPAPER_STORE.getArchiveOldArticles();
+    std::vector<std::string> toCleanup;  // paths of downloaded non-API articles
+    int pruned = 0;
 
-  LOG_DBG("INS", "Background sync complete, %d items in list", displayList.size());
+    auto it = displayList.begin();
+    while (it != displayList.end()) {
+      if (!it->bookmarkId.empty()) {
+        bool inApi = false;
+        for (const auto& id : apiIds) { if (id == it->bookmarkId) { inApi = true; break; } }
+        if (!inApi) {
+          if (it->downloaded) {
+            toCleanup.push_back(getArticlePath(*it));
+          } else {
+            pruned++;
+          }
+          it = displayList.erase(it);
+          continue;
+        }
+      }
+      ++it;
+    }
+
+    if (selectorIndex >= static_cast<int>(displayList.size()))
+      selectorIndex = std::max(0, static_cast<int>(displayList.size()) - 1);
+
+    if (pruned > 0 || !toCleanup.empty()) {
+      // Rebuild downloadQueue — indices are stale after erase
+      downloadQueue.clear();
+      for (int i = 0; i < static_cast<int>(displayList.size()); i++) {
+        if (displayList[i].queued) downloadQueue.push_back(i);
+      }
+      LOG_INF("INS", "Pruned %d unread + %d downloaded non-API entries",
+              pruned, static_cast<int>(toCleanup.size()));
+    }
+
+    // Sort by time descending (newest first, time=0 at the end)
+    std::sort(displayList.begin(), displayList.end(), [](const DisplayBookmark& a, const DisplayBookmark& b) {
+      if (a.time == 0 && b.time == 0) return false;
+      if (a.time == 0) return false;
+      if (b.time == 0) return true;
+      return a.time > b.time;
+    });
+
+    syncStatus = std::string(tr(STR_SYNCED)) + " (" + std::to_string(displayList.size()) + ")";
+    syncComplete = true;
+    updateRequired = true;
+    saveBookmarkCache();
+    xSemaphoreGive(renderingMutex);
+
+    // File operations — outside mutex, after saveBookmarkCache has persisted the pruned list
+    if (!toCleanup.empty()) {
+      const std::string archiveFolder = INSTAPAPER_STORE.getDownloadFolder() + "/archive";
+      if (doArchive) Storage.mkdir(archiveFolder.c_str());
+      for (const auto& path : toCleanup) {
+        if (doArchive) {
+          const size_t slash = path.rfind('/');
+          const std::string fname = (slash != std::string::npos) ? path.substr(slash) : ("/" + path);
+          Storage.rename(path.c_str(), (archiveFolder + fname).c_str());
+        } else {
+          Storage.remove(path.c_str());
+        }
+        // Sidecar and render cache always purged (derived data)
+        Storage.remove((path + ".meta").c_str());
+        const size_t hash = std::hash<std::string>{}(path);
+        Storage.removeDir(("/.crosspoint/html_" + std::to_string(hash)).c_str());
+      }
+    }
+  }
+
+  LOG_INF("INS", "Sync done: %d items — free=%u maxAlloc=%u", static_cast<int>(displayList.size()),
+          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 }
 
 void InstapaperActivity::loop() {
@@ -532,12 +655,30 @@ void InstapaperActivity::loop() {
   // Modal takes priority over everything
   if (showStopModal) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      const int toOpen = pendingOpenIdx;
       showStopModal = false;
-      abortDownload = true;
-      if (pendingOpenIdx >= 0 && pendingOpenIdx < static_cast<int>(displayList.size())) {
-        openArticle(pendingOpenIdx);  // reuse openArticle to build callbacks properly
-      }
       pendingOpenIdx = -1;
+      abortDownload = true;
+      // Open directly — do NOT call openArticle() here. openArticle() checks
+      // activeDownloadIdx/downloadQueue, which are still set because the task
+      // hasn't exited yet (abortDownload is just a signal). Calling it would
+      // re-trigger this same modal in an infinite loop.
+      if (toOpen >= 0 && toOpen < static_cast<int>(displayList.size()) &&
+          displayList[toOpen].downloaded) {
+        std::string nextPath;
+        for (int i = toOpen + 1; i < static_cast<int>(displayList.size()); i++) {
+          if (displayList[i].downloaded) { nextPath = getArticlePath(displayList[i]); break; }
+        }
+        const std::string currentPath = getArticlePath(displayList[toOpen]);
+        auto goBack = onGoToSelf;
+        std::function<void()> advanceFn;
+        if (!nextPath.empty()) {
+          advanceFn = [nextPath, goBack]() { s_pendingOpenPath = nextPath; goBack(); };
+        }
+        auto deleteFn = [currentPath, goBack]() { deleteArticleFiles(currentPath); goBack(); };
+        goingToReader = true;
+        onOpenBook(currentPath, std::move(advanceFn), std::move(deleteFn));
+      }
     } else if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
                mappedInput.wasReleased(MappedInputManager::Button::Left)) {
       showStopModal = false;
@@ -558,10 +699,31 @@ void InstapaperActivity::loop() {
   }
 
   if (state == State::BROWSING) {
+    // Force-sync restart in progress: wait for tasks to exit cleanly (so SD
+    // files are properly closed) before calling ESP.restart(). Block all
+    // button handling while waiting — restart is imminent.
+    if (pendingRestart) {
+      if (downloadTaskHandle == nullptr && syncTaskHandle == nullptr) {
+        // RTC_DATA_ATTR is only preserved across deep sleep on ESP32-C3, NOT
+        // across ESP.restart() (software reset re-initialises .rtc.data).
+        // A 1ms timer-wakeup deep sleep gives a clean heap AND preserves the
+        // rtcGoToInstapaper flag so setup() routes straight back to Instapaper.
+        LOG_INF("INS", "Force-sync: tasks done, entering deep sleep for clean restart");
+        esp_sleep_enable_timer_wakeup(1000);  // 1 ms
+        esp_deep_sleep_start();
+      }
+      return;
+    }
+
     // Restart download task if items are still queued but the task died (e.g., transient WiFi failure).
     // Queued items are preserved on non-abort failure; this watchdog re-launches the task automatically
     // once the user is back in BROWSING state (after dismissing any error or just waiting).
-    if (!downloadQueue.empty() && downloadTaskHandle == nullptr && !abortDownload) {
+    // Guard on !syncing (set in trampoline after backgroundSyncWork returns), not just syncComplete.
+    // syncComplete is set while renderingMutex and the SPI bus mutex are still held by the sync task;
+    // spawning the download task at that moment causes Storage.mkdir() to contend for the SPI mutex,
+    // corrupting FreeRTOS priority-inheritance bookkeeping → xTaskPriorityDisinherit assert.
+    if (!downloadQueue.empty() && downloadTaskHandle == nullptr && !abortDownload &&
+        syncComplete && !syncing) {
       xTaskCreate(&InstapaperActivity::downloadTaskTrampoline, "InstaDownload", 8192, this, 1, &downloadTaskHandle);
     }
 
@@ -572,7 +734,16 @@ void InstapaperActivity::loop() {
         openArticle(selectorIndex);
       }
     } else if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-      queueNewest(5);
+      // Force sync: restart to clear fragmented heap, then re-enter Instapaper
+      // with clean RAM so listBookmarks has enough contiguous memory for TLS.
+      // Signal abort so tasks notice and close any open SD files before we
+      // restart. pendingRestart=true causes loop() to poll for task exit and
+      // then call ESP.restart() — avoiding a hard reset mid-SD-write.
+      LOG_INF("INS", "Force-sync: pending restart — dl=%p sync=%p", downloadTaskHandle, syncTaskHandle);
+      rtcGoToInstapaper = true;
+      abortDownload = true;
+      pendingRestart = true;
+      updateRequired = true;
     } else if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
       if (!displayList.empty()) {
         deleteArticle(selectorIndex);
@@ -771,7 +942,7 @@ void InstapaperActivity::toggleQueue(int index) {
     // Advance cursor so user can queue the next article
     int nextIdx = ButtonNavigator::nextIndex(index, displayList.size());
     if (nextIdx != index) selectorIndex = nextIdx;
-    bool needStart = (downloadTaskHandle == nullptr);
+    bool needStart = (downloadTaskHandle == nullptr && !syncing);
     xSemaphoreGive(renderingMutex);
     if (needStart) {
       abortDownload = false;
@@ -825,6 +996,7 @@ void InstapaperActivity::openArticle(int index) {
         deleteArticleFiles(currentPath);
         goBack();  // return to list — no auto-advance after delete
       };
+      goingToReader = true;
       onOpenBook(currentPath, std::move(advanceFn), std::move(deleteFn));
     }
     return;
@@ -869,33 +1041,9 @@ void InstapaperActivity::deleteArticle(int index) {
   updateRequired = true;
 }
 
-bool InstapaperActivity::ensureWifiAndNtp() {
-  if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
-    updateRequired = true;
-    WiFi.mode(WIFI_STA);
-    WiFi.begin();
-    for (int i = 0; i < 100 && WiFi.status() != WL_CONNECTED && !abortDownload; i++) {
-      vTaskDelay(100 / portTICK_PERIOD_MS);
-    }
-    if (WiFi.status() != WL_CONNECTED) return false;
-    for (int i = 0; i < 5 && !abortDownload; i++) vTaskDelay(100 / portTICK_PERIOD_MS);
-    if (abortDownload) return false;
-  }
-
-  if (time(nullptr) < 1000000000) {
-    updateRequired = true;
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
-    for (int i = 0; i < 200 && time(nullptr) < 1000000000 && !abortDownload; i++) {
-      vTaskDelay(100 / portTICK_PERIOD_MS);
-      if (i == 100) configTime(0, 0, "time.google.com", "pool.ntp.org", "time.nist.gov");
-    }
-    if (time(nullptr) < 1000000000) return false;
-  }
-
-  return true;
-}
 
 void InstapaperActivity::backgroundDownloadWork() {
+  LOG_INF("INS", "Download task start — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   const auto& folder = INSTAPAPER_STORE.getDownloadFolder();
   Storage.mkdir(folder.c_str());
 
@@ -908,28 +1056,16 @@ void InstapaperActivity::backgroundDownloadWork() {
   }
   if (abortDownload) return;
 
-  if (!ensureWifiAndNtp()) {
-    xSemaphoreTake(renderingMutex, portMAX_DELAY);
-    activeDownloadIdx = -1;
-    if (abortDownload) {
-      // User explicitly exited — clear the queue so items don't re-trigger on next enter
-      for (int qi : downloadQueue) {
-        if (qi < static_cast<int>(displayList.size())) displayList[qi].queued = false;
-      }
-      downloadQueue.clear();
-    }
-    // Transient failure: leave downloadQueue + queued flags intact.
-    // loop() will auto-restart this task once the user dismisses the error.
-    if (!abortDownload) {
-      state = State::ERROR;
-      errorMessage = tr(STR_WIFI_CONN_FAILED);
-    }
-    xSemaphoreGive(renderingMutex);
-
-    abortDownload = false;
-    updateRequired = true;
+  // WiFi is owned by the sync task.  After sync completes, the connection
+  // should already be live.  If it is not (sync failed to connect, no
+  // credentials, etc.) downloads cannot proceed — leave the queue intact so
+  // the next session retries, and bail.
+  if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
+    LOG_ERR("INS", "Download: WiFi not connected after sync — deferring queue (free=%u maxAlloc=%u)",
+            ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     return;
   }
+  LOG_INF("INS", "Download: WiFi ready — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
   while (!abortDownload) {
     // Pop next item from queue
@@ -968,6 +1104,8 @@ void InstapaperActivity::backgroundDownloadWork() {
         },
         [this]() { return static_cast<bool>(abortDownload); });
 
+    LOG_INF("INS", "Article '%s' done — free=%u maxAlloc=%u", bmCopy.title.c_str(), ESP.getFreeHeap(),
+            ESP.getMaxAllocHeap());
     xSemaphoreTake(renderingMutex, portMAX_DELAY);
     if (idx < static_cast<int>(displayList.size())) {
       displayList[idx].downloading = false;
@@ -976,11 +1114,36 @@ void InstapaperActivity::backgroundDownloadWork() {
       if (bmCopy.downloaded) {
         displayList[idx].downloaded = true;
         displayList[idx].filename = bmCopy.filename;
+      } else if (!abortDownload) {
+        // Transient failure (heap OOM, network) — re-mark as queued so
+        // saveQueueFile() persists it and the next session retries automatically.
+        displayList[idx].queued = true;
+        downloadQueue.push_back(idx);
+      } else if (exitingActivity) {
+        // Activity is exiting (user pressed Back) — re-queue so saveQueueFile()
+        // persists it. This is NOT a user-directed cancel (toggleQueue sets
+        // abortDownload=true without exitingActivity, which correctly drops the item).
+        displayList[idx].queued = true;
+        downloadQueue.push_back(idx);
       }
     }
     activeDownloadIdx = -1;
     xSemaphoreGive(renderingMutex);
     updateRequired = true;
+
+    // Safety: if heap is unexpectedly low after a failed download, stop early.
+    // Clear downloadQueue so the loop() watchdog does not immediately respawn
+    // this task — the fragmented heap would just fail again. Items remain
+    // queued in displayList (queued=true) and are persisted by saveQueueFile()
+    // on exit, so the next session (clean heap) will retry them.
+    if (!abortDownload && !bmCopy.downloaded && ESP.getMaxAllocHeap() < 50000) {
+      LOG_ERR("INS", "Download: heap too low (maxAlloc=%u), deferring %d item(s) to next session",
+              ESP.getMaxAllocHeap(), static_cast<int>(downloadQueue.size()));
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      downloadQueue.clear();
+      xSemaphoreGive(renderingMutex);
+      break;
+    }
 
     if (abortDownload) break;
   }

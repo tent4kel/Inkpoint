@@ -54,6 +54,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent) {
   LOG_DBG("HTTP", "Fetching: %s", url.c_str());
 
   http.begin(*client, url.c_str());
+  http.setTimeout(8000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.addHeader("User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
 
@@ -139,6 +140,7 @@ bool HttpDownloader::postUrl(const std::string& url, const std::string& body, co
   LOG_DBG("HTTP", "POST: %s", url.c_str());
 
   http.begin(*client, url.c_str());
+  http.setTimeout(8000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.addHeader("User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -232,6 +234,7 @@ HttpDownloader::DownloadError HttpDownloader::postUrlToFile(const std::string& u
   LOG_DBG("HTTP", "POST to file: %s -> %s", url.c_str(), destPath.c_str());
 
   http.begin(*client, url.c_str());
+  http.setTimeout(8000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.addHeader("User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -361,6 +364,7 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   LOG_DBG("HTTP", "Destination: %s", destPath.c_str());
 
   http.begin(*client, url.c_str());
+  http.setTimeout(8000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.addHeader("User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
 
