@@ -66,6 +66,8 @@ class InstapaperActivity final : public Activity {
   volatile bool abortDownload = false;
   bool showStopModal = false;           // "stop downloads + open offline?" overlay
   int pendingOpenIdx = -1;              // index to open when user confirms modal
+  bool exitingActivity = false;         // set in onExit() to re-queue mid-download items (not user-cancel)
+  bool pendingRestart = false;          // force-sync restart: wait for tasks to exit cleanly then restart
 
 
   static void taskTrampoline(void* param);
@@ -83,7 +85,6 @@ class InstapaperActivity final : public Activity {
 
   static void downloadTaskTrampoline(void* param);
   void backgroundDownloadWork();
-  bool ensureWifiAndNtp();
 
   void openArticle(int index);
   void deleteArticle(int index);
