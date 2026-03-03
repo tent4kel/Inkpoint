@@ -37,17 +37,15 @@ std::string deckSettingsPath(const std::string& csvPath) {
 // --- Anki-specific settings (independent of reader) ---
 
 int AnkiActivity::getFontIdForAnkiSize() const {
-  // ankiFontSize cycles 1-3: S(MEDIUM) → M(LARGE) → XL(EXTRA_LARGE).
-  // Map to font IDs per family. Index: [family][ankiFontSize 1-3]
-  using S = CrossPointSettings;
-  static constexpr int kFontIds[3][3] = {
-    {BOOKERLY_14_FONT_ID, BOOKERLY_16_FONT_ID, BOOKERLY_18_FONT_ID},    // BOOKERLY
-    {NOTOSANS_14_FONT_ID, NOTOSANS_16_FONT_ID, NOTOSANS_18_FONT_ID},    // NOTOSANS
-    {OPENDYSLEXIC_10_FONT_ID, OPENDYSLEXIC_12_FONT_ID, OPENDYSLEXIC_14_FONT_ID},  // OPENDYSLEXIC
+  // ankiFontSize cycles 1-3: S(FONT_M) → M(FONT_L) → XL(FONT_XL), skipping XS.
+  static constexpr CrossPointSettings::FONT_SIZE kAnkiTiers[] = {
+    CrossPointSettings::FONT_M,   // 0 — unused
+    CrossPointSettings::FONT_M,   // 1 — S
+    CrossPointSettings::FONT_L,   // 2 — M
+    CrossPointSettings::FONT_XL,  // 3 — XL
   };
-  const int fam = SETTINGS.fontFamily < 3 ? SETTINGS.fontFamily : 0;
-  const int sz = (ankiFontSize >= 1 && ankiFontSize <= 3) ? (ankiFontSize - 1) : 0;
-  return kFontIds[fam][sz];
+  auto s = kAnkiTiers[ankiFontSize < 4 ? ankiFontSize : 3];
+  return CrossPointSettings::getFontId(static_cast<CrossPointSettings::FONT_FAMILY>(SETTINGS.fontFamily), s);
 }
 
 void AnkiActivity::loadAnkiSettings() {

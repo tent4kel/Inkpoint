@@ -226,38 +226,16 @@ bool CrossPointSettings::loadFromBinaryFile() {
 }
 
 float CrossPointSettings::getReaderLineCompression() const {
-  switch (fontFamily) {
-    case BOOKERLY:
+  switch (lineSpacing) {
+    case TIGHT:
+      return 1.14f;
+    case NORMAL:
     default:
-      switch (lineSpacing) {
-        case TIGHT:
-          return 0.95f;
-        case NORMAL:
-        default:
-          return 1.0f;
-        case WIDE:
-          return 1.1f;
-      }
-    case NOTOSANS:
-      switch (lineSpacing) {
-        case TIGHT:
-          return 0.90f;
-        case NORMAL:
-        default:
-          return 0.95f;
-        case WIDE:
-          return 1.0f;
-      }
-    case OPENDYSLEXIC:
-      switch (lineSpacing) {
-        case TIGHT:
-          return 0.90f;
-        case NORMAL:
-        default:
-          return 0.95f;
-        case WIDE:
-          return 1.0f;
-      }
+      return 1.20f;
+    case WIDE:
+      return 1.32f;
+    case X_WIDE:
+      return 1.50f;
   }
 }
 
@@ -314,44 +292,50 @@ uint16_t CrossPointSettings::getPoolSizeValue() const {
   }
 }
 
-int CrossPointSettings::getReaderFontId() const {
-  switch (fontFamily) {
+int CrossPointSettings::getFontId(FONT_FAMILY f, FONT_SIZE s) {
+  // <<< GENERATED
+  switch (f) {
     case BOOKERLY:
     default:
-      switch (fontSize) {
-        case SMALL:
-          return BOOKERLY_12_FONT_ID;
-        case MEDIUM:
+      switch (s) {
+        case FONT_S:
+          return BOOKERLY_10_FONT_ID;
+        case FONT_M:
+          return BOOKERLY_11_FONT_ID;
+        case FONT_L:
         default:
           return BOOKERLY_14_FONT_ID;
-        case LARGE:
-          return BOOKERLY_16_FONT_ID;
-        case EXTRA_LARGE:
-          return BOOKERLY_18_FONT_ID;
+        case FONT_XL:
+          return BOOKERLY_17_FONT_ID;
       }
-    case NOTOSANS:
-      switch (fontSize) {
-        case SMALL:
-          return NOTOSANS_12_FONT_ID;
-        case MEDIUM:
+    case CHAREINK:
+      switch (s) {
+        case FONT_S:
+          return CHAREINK_11_FONT_ID;
+        case FONT_M:
+          return CHAREINK_11_5_FONT_ID;
+        case FONT_L:
         default:
-          return NOTOSANS_14_FONT_ID;
-        case LARGE:
-          return NOTOSANS_16_FONT_ID;
-        case EXTRA_LARGE:
-          return NOTOSANS_18_FONT_ID;
+          return CHAREINK_16_FONT_ID;
+        case FONT_XL:
+          return CHAREINK_19_FONT_ID;
       }
-    case OPENDYSLEXIC:
-      switch (fontSize) {
-        case SMALL:
-          return OPENDYSLEXIC_8_FONT_ID;
-        case MEDIUM:
+    case NEWSREADER:
+      switch (s) {
+        case FONT_S:
+          return NEWSREADER_11_7_FONT_ID;
+        case FONT_M:
+          return NEWSREADER_12_2_FONT_ID;
+        case FONT_L:
         default:
-          return OPENDYSLEXIC_10_FONT_ID;
-        case LARGE:
-          return OPENDYSLEXIC_12_FONT_ID;
-        case EXTRA_LARGE:
-          return OPENDYSLEXIC_14_FONT_ID;
+          return NEWSREADER_16_FONT_ID;
+        case FONT_XL:
+          return NEWSREADER_19_FONT_ID;
       }
   }
+  // GENERATED >>>
+}
+
+int CrossPointSettings::getReaderFontId() const {
+  return getFontId(static_cast<FONT_FAMILY>(fontFamily), static_cast<FONT_SIZE>(fontSize));
 }
