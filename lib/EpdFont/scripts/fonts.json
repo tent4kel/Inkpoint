@@ -1,0 +1,56 @@
+{
+  "outputDir": "../builtinFonts",
+  "fonts": [
+    {
+      "name": "bookerly",
+      "compress": true,
+      "2bit": true,
+      "sources": {
+        "regular":    "../builtinFonts/source/Bookerly/Bookerly-Regular.ttf",
+        "bold":       "../builtinFonts/source/Bookerly/Bookerly-Bold.ttf",
+        "italic":     "../builtinFonts/source/Bookerly/Bookerly-Italic.ttf",
+        "bolditalic": "../builtinFonts/source/Bookerly/Bookerly-BoldItalic.ttf"
+      },
+      "sizes": [
+        { "size": 10, "force_autohint": true },
+        { "size": 11,   "force_autohint": true },
+        { "size": 14,   "force_autohint": true },
+        { "size": 17,   "force_autohint": false }
+      ]
+    },
+    {
+      "name": "chareink",
+      "compress": true,
+"2bit": true,
+      "sources": {
+        "regular":    "../builtinFonts/source/ChareInk/ChareInk7SP-Regular.ttf",
+        "bold":       "../builtinFonts/source/ChareInk/ChareInk7SP-Bold.ttf",
+        "italic":     "../builtinFonts/source/ChareInk/ChareInk7SP-Italic.ttf",
+        "bolditalic": "../builtinFonts/source/ChareInk/ChareInk7SP-BoldItalic.ttf"
+      },
+      "sizes": [
+        { "size": 11, "force_autohint": true },
+        { "size": 11.5,   "force_autohint": true },
+        { "size": 16,   "force_autohint": true },
+        { "size": 19,   "force_autohint": false }
+      ]
+    },
+    {
+      "name": "newsreader",
+      "compress": true,
+      "2bit": true,
+      "sources": {
+        "regular":    "../builtinFonts/source/Newsreader/Newsreader-Regular.ttf",
+        "bold":       "../builtinFonts/source/Newsreader/Newsreader-Bold.ttf",
+        "italic":     "../builtinFonts/source/Newsreader/Newsreader-Italic.ttf",
+        "bolditalic": "../builtinFonts/source/Newsreader/Newsreader-BoldItalic.ttf"
+      },
+      "sizes": [
+        { "size": 11.7, "force_autohint": false },
+        { "size": 12.2,   "force_autohint": false },
+        { "size": 16,   "force_autohint": false },
+        { "size": 19,   "force_autohint": false }
+      ]
+    }
+  ]
+}

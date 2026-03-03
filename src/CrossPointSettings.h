@@ -94,8 +94,8 @@ class CrossPointSettings {
 
   // Font family options
   enum FONT_FAMILY { BOOKERLY = 0, NEWSREADER = 1, CHAREINK = 2, FONT_FAMILY_COUNT };
-  // Font size options
-  enum FONT_SIZE { TINY = 0, SMALL = 1, MEDIUM = 2, EXTRA_LARGE = 3, FONT_SIZE_COUNT };
+  // Font size options (abstract tier names — not tied to specific point sizes)
+  enum FONT_SIZE { FONT_S = 0, FONT_M = 1, FONT_L = 2, FONT_XL = 3, FONT_SIZE_COUNT };
   enum LINE_COMPRESSION { TIGHT = 0, NORMAL = 1, WIDE = 2, X_WIDE = 3, LINE_COMPRESSION_COUNT };
   enum PARAGRAPH_ALIGNMENT {
     JUSTIFIED = 0,
@@ -171,7 +171,7 @@ class CrossPointSettings {
   uint8_t frontButtonRight = FRONT_HW_RIGHT;
   // Reader font settings
   uint8_t fontFamily = BOOKERLY;
-  uint8_t fontSize = MEDIUM;
+  uint8_t fontSize = FONT_L;
   uint8_t lineSpacing = NORMAL;
   uint8_t paragraphAlignment = JUSTIFIED;
   // Auto-sleep timeout setting (default 10 minutes)
@@ -207,6 +207,7 @@ class CrossPointSettings {
   uint16_t getPowerButtonDuration() const {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
   }
+  static int getFontId(FONT_FAMILY f, FONT_SIZE s);
   int getReaderFontId() const;
 
   // If count_only is true, returns the number of settings items that would be written.
