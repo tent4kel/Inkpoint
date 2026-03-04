@@ -88,7 +88,7 @@ bool AnkiDeck::save() {
     rows.push_back(std::move(row));
   }
 
-  return CsvParser::writeFile(csvPath, rows);
+  return CsvParser::writeFile(csvPath, rows, CsvParser::delimiterForPath(csvPath));
 }
 
 void AnkiDeck::buildDueList() {
@@ -191,8 +191,9 @@ std::string AnkiDeck::getTitle() const {
   size_t lastSlash = csvPath.find_last_of('/');
   std::string filename = (lastSlash != std::string::npos) ? csvPath.substr(lastSlash + 1) : csvPath;
 
-  if (filename.length() >= 4 && filename.substr(filename.length() - 4) == ".csv") {
-    filename = filename.substr(0, filename.length() - 4);
+  if (filename.size() >= 4 && (filename.substr(filename.size() - 4) == ".csv" ||
+                                filename.substr(filename.size() - 4) == ".tsv")) {
+    filename = filename.substr(0, filename.size() - 4);
   }
   return filename;
 }

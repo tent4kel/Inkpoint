@@ -144,7 +144,8 @@ void AnkiDeckExplorerActivity::scanDecks() {
     file.getName(name, sizeof(name));
     std::string filename(name);
 
-    if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".csv") {
+    if (filename.size() > 4 && (filename.substr(filename.size() - 4) == ".csv" ||
+                                 filename.substr(filename.size() - 4) == ".tsv")) {
       std::string path = "/anki/" + filename;
       DeckInfo info;
       info.path = path;
@@ -229,7 +230,8 @@ const char* AnkiDeckExplorerActivity::sortModeLabel() const {
 std::string AnkiDeckExplorerActivity::titleFromPath(const std::string& path) {
   size_t lastSlash = path.find_last_of('/');
   std::string filename = (lastSlash != std::string::npos) ? path.substr(lastSlash + 1) : path;
-  if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".csv") {
+  if (filename.size() > 4 && (filename.substr(filename.size() - 4) == ".csv" ||
+                               filename.substr(filename.size() - 4) == ".tsv")) {
     filename = filename.substr(0, filename.size() - 4);
   }
   return filename;
