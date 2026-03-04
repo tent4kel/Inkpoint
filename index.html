@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CrossPoint - Deck Editor</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      overflow: hidden; /* body never scrolls; #view-list or #view-picker does */
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      margin: 0;
+    }
+    /* Picker view scrolls normally inside a centered container */
+    #view-picker {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    /* List view fills the whole viewport and owns the scroll.
+       iOS Safari sticky/fixed elements work correctly when anchored to an
+       explicit overflow container rather than the document body. */
+    #view-list {
+      position: fixed;
+      inset: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: none;
+    }
+    /* Centered content wrapper inside the scroll container */
+    #list-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 16px 10px 20px;
+      position: relative; /* sticky children anchor here */
+    }
+    .message {
+      padding: 12px;
+      border-radius: 4px;
+      margin: 10px 0;
+      display: none;
+    }
+    .message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .message.error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+    /* ── Save/discard dialog ──────────────────────────────────────── */
+    #dirty-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 400;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #dirty-overlay[hidden] { display: none; }
+    #dirty-dialog {
+      background: white;
+      border-radius: 16px;
+      padding: 24px 20px 20px;
+      max-width: 320px;
+      width: 90%;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    }
+    #dirty-dialog h3 { margin: 0 0 6px; font-size: 1.1em; color: #2c3e50; }
+    #dirty-dialog p  { margin: 0 0 18px; font-size: 0.9em; color: #7f8c8d; }
+    .dirty-btns { display: flex; gap: 8px; }
+    .dirty-btns button {
+      flex: 1;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.88em;
+      font-weight: 500;
+      font-family: inherit;
+    }
+    .dirty-cancel  { background: #ecf0f1; color: #555; }
+    .dirty-discard { background: #e74c3c; color: white; }
+    .dirty-save    { background: #3498db; color: white; }
+
+    /* ── Text input dialog ───────────────────────────────────────── */
+    #input-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 400;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #input-overlay[hidden] { display: none; }
+    #input-dialog {
+      background: white;
+      border-radius: 16px;
+      padding: 24px 20px 20px;
+      max-width: 320px;
+      width: 90%;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    }
+    #input-dialog h3 { margin: 0 0 14px; font-size: 1.1em; color: #2c3e50; }
+    #input-field {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: inherit;
+      color: #2c3e50;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+    }
+    #input-field:focus { outline: none; border-color: #3498db; }
+    .input-btns { display: flex; gap: 8px; }
+    .input-btns button {
+      flex: 1;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.88em;
+      font-weight: 500;
+      font-family: inherit;
+    }
+    .input-cancel  { background: #ecf0f1; color: #555; }
+    .input-confirm { background: #3498db; color: white; }
+
+    /* ── Deck picker ──────────────────────────────────────────────── */
+    h1 {
+      color: #2c3e50;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    .deck-item {
+      padding: 12px 16px;
+      background: white;
+      border-radius: 16px;
+      margin: 8px 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .deck-item:hover { background: #ecf0f1; }
+    .deck-title { font-weight: 500; color: #2c3e50; }
+    .deck-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .empty-msg {
+      text-align: center;
+      color: #95a5a6;
+      padding: 40px 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    /* ── Card list view ───────────────────────────────────────────── */
+
+    /* ── Large collapsing deck title ──────────────────────────────── */
+    #deck-title-large {
+      font-size: 2em;
+      font-weight: 700;
+      color: #2c3e50;
+      margin: 0 0 4px;
+      line-height: 1.2;
+      transform-origin: top center;
+      will-change: transform, opacity;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: center;
+    }
+
+    /* ── Sticky 2×2 action grid ───────────────────────────────────── */
+    .action-grid {
+      position: -webkit-sticky;
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 10px 0 8px;
+      background: #f0f2f5; /* solid — no transparent zone for cards to bleed through */
+    }
+    /* Fade out below the action bar as a non-layout overflow — keeps the
+       visual softening without the transparent-background scroll artifact. */
+    .action-grid::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 0; right: 0;
+      height: 14px;
+      background: linear-gradient(to bottom, #f0f2f5, transparent);
+      pointer-events: none;
+    }
+
+    /* ── Cards ────────────────────────────────────────────────────── */
+    .cards-container { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+
+    .card-wrap {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+      /* Promote the whole card (face + action buttons) to a single GPU layer.
+         Without this, .card-face (will-change:transform) is composited
+         separately from its .action-dup/.action-del siblings, so during fast
+         scroll the layers move at different rates and the buttons bleed through. */
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+    }
+    .action-dup, .action-del {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 84px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+      color: white;
+      font-size: 1.5em;
+      line-height: 1;
+      user-select: none;
+    }
+    .action-dup { left: 0;  background: #27ae60; }
+    .action-del { right: 0; background: #e74c3c; }
+    .action-dup span, .action-del span {
+      font-size: 0.45em;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .card-face {
+      display: flex;
+      background: white;
+      border-radius: 16px;
+      position: relative;
+      z-index: 1;
+      min-height: 64px;
+    }
+    .card-half {
+      flex: 1;
+      padding: 12px 14px;
+      min-width: 0;
+      cursor: text;
+    }
+    .card-half + .card-half { border-left: 1px solid #e5e5e5; }
+
+    /* ── Desktop margin action buttons ────────────────────────────── */
+    .card-outer { position: relative; }
+    .margin-btn { display: none; }
+    @media (hover: hover) {
+      #list-inner { padding: 16px 44px 20px; }
+      .margin-btn {
+        display: flex;
+        position: absolute;
+        left: calc(100% + 7px);
+        width: 30px; height: 30px;
+        border: none; border-radius: 8px;
+        background: transparent;
+        cursor: pointer;
+        font-size: 10px; line-height: 1;
+        color: #c8c8c8;
+        align-items: center; justify-content: center;
+        transition: color 0.15s, background 0.15s;
+        padding: 0; font-family: inherit;
+        user-select: none;
+      }
+      .margin-dup { top: calc(50% - 32px); }
+      .margin-del { top: calc(50% + 2px);  }
+      .margin-dup:hover { color: #27ae60; background: #edf7ef; }
+      .margin-del:hover { color: #e74c3c; background: #fdf0f0; }
+    }
+
+    /* ── Markdown preview ─────────────────────────────────────────── */
+    .card-preview {
+      text-align: justify;
+      font-size: 0.95em;
+      line-height: 1.55;
+      color: #2c3e50;
+      min-height: 24px;
+      user-select: none;
+    }
+    .card-preview p           { margin: 0 0 0.45em; }
+    .card-preview p:last-child { margin-bottom: 0; }
+    .card-preview hr { border: none; border-top: 1px solid #ddd; margin: 6px 0; }
+    .card-preview strong      { font-weight: 700; }
+    .card-preview em          { font-style: italic; }
+    .card-preview code {
+      background: #f0f0f0;
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.88em;
+      color: #c0392b;
+    }
+    .card-preview .ph { color: #ccc; }
+    .card-preview mark {
+      background: #fff3a3;
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+
+    /* ── Raw textarea (editing) ───────────────────────────────────── */
+    .card-edit {
+      display: block;
+      height: 0;
+      min-height: 0;
+      opacity: 0;
+      width: 100%;
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: inherit;
+      font-size: 16px;
+      line-height: 1.55;
+      background: transparent;
+      padding: 0;
+      overflow: hidden;
+      color: #2c3e50;
+    }
+    .card-half.editing .card-preview { display: none; }
+    .card-half.editing .card-edit    { height: auto; min-height: 24px; opacity: 1; }
+
+    /* ── Action buttons ───────────────────────────────────────────── */
+    .bar-btn {
+      padding: 11px 14px;
+      border-radius: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+      border: none;
+      cursor: pointer;
+      font-size: 0.88em;
+      font-weight: 500;
+      font-family: inherit;
+      color: white;
+      white-space: nowrap;
+      width: 100%;
+    }
+    .bar-btn:active   { opacity: 0.82; }
+    .bar-btn:disabled { background: #95a5a6 !important; cursor: not-allowed; }
+    .bar-back { background: #7f8c8d; }
+    .bar-back:hover { background: #6c7a7d; }
+    .bar-save { background: #3498db; transition: background 0.25s; }
+    .bar-save:hover { background: #2980b9; }
+    .bar-save.saved { background: #27ae60; }
+    .bar-save.saved:hover { background: #219a52; }
+    .bar-add  { background: #27ae60; }
+    .bar-add:hover  { background: #219a52; }
+    .bar-export { background: #8e44ad; }
+    .bar-export:hover { background: #732d91; }
+
+    .bar-search-wrap { position: relative; }
+    .bar-search-wrap svg {
+      position: absolute;
+      left: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      color: #aaa;
+    }
+    #search-input {
+      width: 100%;
+      padding: 11px 11px 11px 34px;
+      border-radius: 16px;
+      border: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+      background: white;
+      font-size: 16px;
+      font-family: inherit;
+      color: #2c3e50;
+    }
+    #search-input::placeholder { color: #bbb; }
+    #search-input:focus { outline: none; box-shadow: 0 2px 8px rgba(52,152,219,0.35); }
+
+    /* ── Deck picker edit/export buttons ──────────────────────────── */
+    .deck-edit-btn, .deck-export-btn {
+      font-size: 1.05em;
+      color: #ccc;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .deck-edit-btn:hover   { color: #7f8c8d; background: #e8eaed; }
+    .deck-export-btn:hover { color: #8e44ad; background: #f0e8f5; }
+
+    /* ── Picker action row ────────────────────────────────────────── */
+    .picker-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0;
+      align-items: center;
+    }
+    .picker-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      font-size: 0.9em;
+      font-family: inherit;
+      font-weight: 500;
+      color: white;
+    }
+    .picker-btn-new    { background: #27ae60; }
+    .picker-btn-new:hover { background: #219a52; }
+    .picker-btn-import { background: #e67e22; }
+    .picker-btn-import:hover { background: #ca6f1e; }
+    .picker-btn-folder { background: #3498db; }
+    .picker-btn-folder:hover { background: #2980b9; }
+
+    /* ── Hotkey hints ─────────────────────────────────────────────── */
+    #hotkey-hints {
+      text-align: center;
+      color: #ccc;
+      font-size: 0.75em;
+      letter-spacing: 0.03em;
+      padding: 18px 0 70px;
+      user-select: none;
+      line-height: 2;
+    }
+    #hotkey-hints .fmt {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.95em;
+    }
+
+    /* ── Raw CSV view ─────────────────────────────────────────────── */
+    #raw-view { margin-top: 4px; }
+    #raw-view textarea {
+      width: 100%;
+      min-height: 420px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 16px;
+      line-height: 1.55;
+      color: #2c3e50;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 14px;
+      resize: vertical;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    #raw-view textarea:focus { outline: none; border-color: #3498db; }
+    #raw-view[hidden] { display: none; }
+
+    /* ── Action grid raw-mode swap ────────────────────────────────── */
+    .action-grid .raw-only  { display: none; }
+    .action-grid.raw-mode .raw-hidden { display: none; }
+    .action-grid.raw-mode .raw-only   { display: block; }
+
+    /* ── Explicit hidden overrides (prevent display:flex/block winning) ─ */
+    #cards-container[hidden],
+    #list-empty[hidden],
+    #no-results[hidden]     { display: none; }
+
+    /* ── Bottom fade overlay ──────────────────────────────────────── */
+    #bottom-fade {
+      position: sticky;
+      bottom: 0;
+      height: 64px;
+      margin-top: -64px;       /* overlap last card without pushing layout */
+      background: linear-gradient(to bottom, transparent, #f0f2f5);
+      pointer-events: none;
+      z-index: 150;
+    }
+    #bottom-fade[hidden] { display: none; }
+
+    /* ── Misc ─────────────────────────────────────────────────────── */
+    .loader {
+      display: inline-block;
+      width: 20px; height: 20px;
+      border: 3px solid #aaa;
+      border-bottom-color: transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 500px) {
+      .action-grid { gap: 6px; }
+      .bar-btn { padding: 10px 10px; font-size: 0.82em; }
+      #search-input { padding: 10px 10px 10px 30px; } /* keep 16px — no override */
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Save/discard dialog ────────────────────────────────────────────── -->
+<div id="dirty-overlay" hidden>
+  <div id="dirty-dialog">
+    <h3>Unsaved changes</h3>
+    <p>Save before leaving, or discard your changes?</p>
+    <div class="dirty-btns">
+      <button class="dirty-cancel"  id="dirty-cancel">Cancel</button>
+      <button class="dirty-discard" id="dirty-discard">Discard</button>
+      <button class="dirty-save"    id="dirty-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Text input dialog ─────────────────────────────────────────────── -->
+<div id="input-overlay" hidden>
+  <div id="input-dialog">
+    <h3 id="input-title">Enter name</h3>
+    <input id="input-field" type="text" autocomplete="off" />
+    <div class="input-btns">
+      <button class="input-cancel"  id="input-cancel">Cancel</button>
+      <button class="input-confirm" id="input-confirm">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file input for import -->
+<input type="file" id="import-input" multiple accept=".csv,.tsv" style="display:none" />
+
+<!-- ── View: Deck Picker ─────────────────────────────────────────────── -->
+<div id="view-picker">
+  <h1>Anki Deck Editor</h1>
+  <div class="picker-actions">
+    <button class="picker-btn picker-btn-new"    onclick="newDeck()">+ New Deck</button>
+    <button class="picker-btn picker-btn-import" onclick="document.getElementById('import-input').click()">&#8593; Import CSV/TSV</button>
+    <button class="picker-btn picker-btn-folder" id="link-folder-btn" style="display:none">&#128193; Link to folder</button>
+  </div>
+  <div id="picker-banner" class="message"></div>
+  <div id="deck-list"><span class="loader"></span> Loading&hellip;</div>
+</div>
+
+<!-- ── View: Card List ───────────────────────────────────────────────── -->
+<div id="view-list" hidden>
+<div id="list-inner">
+  <div id="deck-title-large"></div>
+  <div class="action-grid" id="action-grid">
+    <button class="bar-btn bar-back raw-hidden" id="back-btn">&#8592; Back</button>
+    <div class="bar-search-wrap raw-hidden">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5"
+           stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input id="search-input" type="search" placeholder="Search cards&hellip;" autocomplete="off" />
+    </div>
+    <button class="bar-btn bar-add  raw-hidden" id="add-btn">+ Card</button>
+    <button class="bar-btn bar-save raw-hidden" id="save-btn">Save</button>
+    <button class="bar-btn bar-back raw-only" id="raw-grid-back">&#8592; Cards</button>
+    <button class="bar-btn bar-save raw-only" id="raw-grid-copy">&#128203; Copy all</button>
+  </div>
+  <div id="list-banner" class="message"></div>
+  <div id="cards-container" class="cards-container"></div>
+  <div id="list-empty" class="empty-msg" hidden>
+    No cards yet &mdash; click &ldquo;+ Card&rdquo; to get started.
+  </div>
+  <div id="no-results" class="empty-msg" hidden>
+    No cards match your search.
+  </div>
+  <div id="raw-view" hidden>
+    <textarea id="raw-textarea" spellcheck="false"></textarea>
+  </div>
+
+  <div id="hotkey-hints">
+    <div class="fmt">**bold** &nbsp; *italic* &nbsp; ***b+i*** &nbsp; `code` &nbsp; # heading &nbsp; - list &nbsp; &gt; quote &nbsp; ---</div>
+    <div class="fmt">blank line = paragraph &nbsp;&nbsp; &ldquo;two spaces&rdquo;+&crarr; = line break</div>
+    <div><span id="hint-mods"></span><a id="raw-toggle" href="#" style="color:#7787cb;text-decoration:none;">&#9998; raw CSV</a></div>
+  </div>
+  <div id="bottom-fade" hidden></div>
+</div> <!-- #list-inner -->
+</div>
+
+
+<script>
+  // ── OPFS Backend ──────────────────────────────────────────────────────────
+  // Wraps navigator.storage (OPFS) with the same interface as LocalFsBackend.
+  // listDecks → [{name, title, path}]
+  // readDeck(path) → text
+  // writeDeck(path, text)
+  // renameDeck(from, to)
+  // deleteDeck(path)
+  class OPFSBackend {
+    async _ankiDir() {
+      var root = await navigator.storage.getDirectory();
+      return root.getDirectoryHandle('anki', { create: true });
+    }
+    async listDecks() {
+      var dir = await this._ankiDir();
+      var decks = [];
+      for await (var [name, handle] of dir.entries()) {
+        if (handle.kind !== 'file') continue;
+        if (!/\.(csv|tsv)$/i.test(name)) continue;
+        var title = name.replace(/\.(csv|tsv)$/i, '');
+        decks.push({ name: name, title: title, path: '/anki/' + name });
+      }
+      decks.sort(function(a, b) { return a.title.localeCompare(b.title); });
+      return decks;
+    }
+    async readDeck(path) {
+      var name = _nameFromPath(path);
+      var dir  = await this._ankiDir();
+      var fh   = await dir.getFileHandle(name);
+      var file = await fh.getFile();
+      return file.text();
+    }
+    async writeDeck(path, content) {
+      var name = _nameFromPath(path);
+      var dir  = await this._ankiDir();
+      var fh   = await dir.getFileHandle(name, { create: true });
+      var w    = await fh.createWritable();
+      await w.write(content);
+      await w.close();
+    }
+    async renameDeck(from, to) {
+      var text = await this.readDeck(from);
+      await this.writeDeck(to, text);
+      await this.deleteDeck(from);
+    }
+    async deleteDeck(path) {
+      var name = _nameFromPath(path);
+      var dir  = await this._ankiDir();
+      await dir.removeEntry(name);
+    }
+  }
+
+  // ── Local Folder Backend (FSAA / showDirectoryPicker) ─────────────────────
+  // Identical interface, but uses a real directory handle chosen by the user.
+  class LocalFsBackend {
+    constructor(dirHandle) { this._dir = dirHandle; }
+    async listDecks() {
+      var decks = [];
+      for await (var [name, handle] of this._dir.entries()) {
+        if (handle.kind !== 'file') continue;
+        if (!/\.(csv|tsv)$/i.test(name)) continue;
+        var title = name.replace(/\.(csv|tsv)$/i, '');
+        decks.push({ name: name, title: title, path: '/anki/' + name });
+      }
+      decks.sort(function(a, b) { return a.title.localeCompare(b.title); });
+      return decks;
+    }
+    async readDeck(path) {
+      var fh   = await this._dir.getFileHandle(_nameFromPath(path));
+      var file = await fh.getFile();
+      return file.text();
+    }
+    async writeDeck(path, content) {
+      var fh = await this._dir.getFileHandle(_nameFromPath(path), { create: true });
+      var w  = await fh.createWritable();
+      await w.write(content);
+      await w.close();
+    }
+    async renameDeck(from, to) {
+      var text = await this.readDeck(from);
+      await this.writeDeck(to, text);
+      await this.deleteDeck(from);
+    }
+    async deleteDeck(path) {
+      await this._dir.removeEntry(_nameFromPath(path));
+    }
+  }
+
+  function _nameFromPath(path) { return path.replace(/^.*\//, ''); }
+
+  var api = new OPFSBackend();
+
+  // ── State ────────────────────────────────────────────────────────────────
+  var currentPath = null, currentDelim = ',';
+  var headers     = [];
+  var rows        = [];
+  var searchQuery = '';
+  var isDirty     = false;
+  var isRawMode   = false;
+
+  // ── Zoom reset ────────────────────────────────────────────────────────────
+  var _vpMeta = document.querySelector('meta[name=viewport]');
+  function resetZoom() {
+    if (!_vpMeta) return;
+    _vpMeta.content = 'width=device-width, initial-scale=1, maximum-scale=1';
+    setTimeout(function() { _vpMeta.content = 'width=device-width, initial-scale=1'; }, 50);
+  }
+
+  // ── Scroll container ──────────────────────────────────────────────────────
+  var listViewEl = document.getElementById('view-list');
+
+  // ── Collapsing title on scroll ────────────────────────────────────────────
+  var titleEl = document.getElementById('deck-title-large');
+  var TITLE_COLLAPSE_PX = 80;
+
+  function updateTitleScale() {
+    var t = Math.min(1, Math.max(0, listViewEl.scrollTop / TITLE_COLLAPSE_PX));
+    titleEl.style.transform = 'scale(' + (1 - t * 0.38) + ')';
+    titleEl.style.opacity   = (1 - t).toString();
+  }
+
+  listViewEl.addEventListener('scroll', updateTitleScale, { passive: true });
+
+  // ── Minimal Markdown renderer ─────────────────────────────────────────────
+  function md(src, highlight) {
+    if (!src || !src.trim()) return '<span class="ph">&#8212;</span>';
+    var s = src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    var codes = [];
+    s = s.replace(/`([^`\n]+)`/g, function(_,c){ codes.push(c); return '\x01'+(codes.length-1)+'\x01'; });
+    s = s.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    s = s.replace(/___([^_\n]+)___/g,      '<strong><em>$1</em></strong>');
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__([^_\n]+)__/g,      '<strong>$1</strong>');
+    s = s.replace(/\*([^*\n]+)\*/g,      '<em>$1</em>');
+    s = s.replace(/_([^_\n]+)_/g,        '<em>$1</em>');
+    s = s.replace(/\x01(\d+)\x01/g, function(_,i){ return '<code>'+codes[+i]+'</code>'; });
+    s = s.split(/\n{2,}/).map(function(p){
+      p = p.trim();
+      if (!p) return '';
+      if (/^[-*_]{3,}$/.test(p)) return '<hr>';
+      return '<p>'+p.replace(/  \n/g,'<br>').replace(/\n/g,' ')+'</p>';
+    }).join('');
+    if (highlight) {
+      var q = highlight.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      s = s.replace(new RegExp('(?![^<>]*>)('+q+')', 'gi'), '<mark>$1</mark>');
+    }
+    return s;
+  }
+
+  // ── RFC 4180 CSV ─────────────────────────────────────────────────────────
+  function delimFromPath(path){ return /\.tsv$/i.test(path) ? '\t' : ','; }
+  function sniffDelim(text){ for(var i=0;i<text.length;i++){ if(text[i]==='\n')break; if(text[i]==='\t')return '\t'; } return ','; }
+  function parseCSV(text, delim) {
+    if(!delim) delim=sniffDelim(text);
+    var result=[],row=[],field='',inQ=false,i=0,c;
+    for(;i<text.length;i++){
+      c=text[i];
+      if(inQ){
+        if(c==='"'&&text[i+1]==='"'){field+='"';i++;}
+        else if(c==='"'){inQ=false;}
+        else{field+=c;}
+      }else{
+        if(c==='"'){inQ=true;}
+        else if(c===delim){row.push(field);field='';}
+        else if(c==='\r'&&text[i+1]==='\n'){row.push(field);result.push(row);row=[];field='';i++;}
+        else if(c==='\n'){row.push(field);result.push(row);row=[];field='';}
+        else{field+=c;}
+      }
+    }
+    if(field!==''||row.length>0){
+      row.push(field);
+      if(row.some(function(f){return f!=='';})) result.push(row);
+    }
+    return result.length ? {headers:result[0],rows:result.slice(1)} : {headers:[],rows:[]};
+  }
+  function csvField(s,delim){s=String(s);var re=delim==='\t'?/["\n\r\t]/:/[,"\n\r]/;return re.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+  function serializeCSV(hdrs,dataRows,delim){
+    if(!delim)delim=',';
+    var lines=[hdrs.map(function(f){return csvField(f,delim);}).join(delim)];
+    for(var i=0;i<dataRows.length;i++) lines.push(dataRows[i].map(function(f){return csvField(f,delim);}).join(delim));
+    return lines.join('\r\n')+'\r\n';
+  }
+  // Returns the /anki/ path for a user-supplied name (e.g. "vocab", "vocab.csv", "vocab.tsv").
+  // Returns null if the base name is invalid.
+  var DECK_BASE_RE = /^[\w\s\-]+$/;
+  function deckPath(t) {
+    var ext=/\.(csv|tsv)$/i.exec(t), base=ext?t.slice(0,-ext[0].length):t;
+    if(!DECK_BASE_RE.test(base)) return null;
+    return '/anki/'+base+(ext?ext[0].toLowerCase():'.csv');
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+  function detectStarWrap(val, start, end) {
+    var sel = val.slice(start, end);
+    var lead = 0, trail = 0;
+    while (lead < 3 && sel[lead] === '*') lead++;
+    while (trail < 3 && trail < sel.length - lead && sel[sel.length - 1 - trail] === '*') trail++;
+    var inside = Math.min(lead, trail);
+    if (inside > 0) {
+      return { inner: sel.slice(inside, sel.length - inside),
+               stars: inside, outerStart: start, outerEnd: end };
+    }
+    var before = 0, after = 0;
+    while (before < 3 && val[start - 1 - before] === '*') before++;
+    while (after  < 3 && val[end + after]         === '*') after++;
+    var outside = Math.min(before, after);
+    return { inner: sel, stars: outside,
+             outerStart: start - outside, outerEnd: end + outside };
+  }
+
+  function toggleDecoration(ta, type) {
+    var start = ta.selectionStart;
+    var end   = ta.selectionEnd;
+    var val   = ta.value;
+    var info     = detectStarWrap(val, start, end);
+    var hasBold  = info.stars >= 2;
+    var hasItal  = info.stars === 1 || info.stars === 3;
+    if (type === 'bold')   hasBold = !hasBold;
+    if (type === 'italic') hasItal = !hasItal;
+    var newStars = (hasBold ? 2 : 0) + (hasItal ? 1 : 0);
+    var marker   = '*'.repeat(newStars);
+    ta.value = val.slice(0, info.outerStart) + marker + info.inner + marker + val.slice(info.outerEnd);
+    ta.setSelectionRange(info.outerStart + newStars,
+                         info.outerStart + newStars + info.inner.length);
+    ta.dispatchEvent(new Event('input'));
+    autoResize(ta);
+  }
+
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select(); ta.setSelectionRange(0, 999999);
+    try { document.execCommand('copy'); } catch(e) {}
+    document.body.removeChild(ta);
+  }
+
+  function copyText(text, btn) {
+    var flash = function() {
+      var old = btn.textContent;
+      btn.textContent = '\u2713 Copied!';
+      setTimeout(function() { btn.textContent = old; }, 1500);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(flash).catch(function() { legacyCopy(text); flash(); });
+    } else {
+      legacyCopy(text); flash();
+    }
+  }
+
+  var _bannerTimers = {};
+  function showBanner(id,msg,err){
+    var el=document.getElementById(id);
+    el.textContent=msg; el.className='message '+(err?'error':'success'); el.style.display='block';
+    if (_bannerTimers[id]) clearTimeout(_bannerTimers[id]);
+    _bannerTimers[id] = setTimeout(function(){ el.style.display='none'; delete _bannerTimers[id]; },3000);
+  }
+  function autoResize(ta){ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';}
+
+  // ── Search ───────────────────────────────────────────────────────────────
+  function matchesQuery(row,q){
+    return !q || row[0].toLowerCase().indexOf(q)!==-1 || row[1].toLowerCase().indexOf(q)!==-1;
+  }
+  document.getElementById('search-input').addEventListener('input',function(){
+    searchQuery=this.value.trim().toLowerCase();
+    renderCards();
+  });
+
+  // ── Save/discard dialog ───────────────────────────────────────────────────
+  var _dirtyCb = null;
+
+  function showDirtyDialog(cb) {
+    _dirtyCb = cb;
+    document.getElementById('dirty-overlay').hidden = false;
+  }
+  function hideDirtyDialog() {
+    document.getElementById('dirty-overlay').hidden = true;
+    _dirtyCb = null;
+  }
+
+  document.getElementById('dirty-cancel').addEventListener('click', function() {
+    var cb = _dirtyCb; hideDirtyDialog(); if (cb) cb('cancel');
+  });
+  document.getElementById('dirty-discard').addEventListener('click', function() {
+    var cb = _dirtyCb; hideDirtyDialog(); isDirty = false; if (cb) cb('discard');
+  });
+  document.getElementById('dirty-save').addEventListener('click', function() {
+    var cb = _dirtyCb; hideDirtyDialog(); if (cb) cb('save');
+  });
+
+  // ── Text input dialog ─────────────────────────────────────────────────────
+  var _inputCb = null;
+  var _inputOverlay = document.getElementById('input-overlay');
+  var _inputField   = document.getElementById('input-field');
+  var _inputTitle   = document.getElementById('input-title');
+
+  function showInputDialog(title, placeholder, defaultValue, cb) {
+    _inputTitle.textContent   = title;
+    _inputField.placeholder   = placeholder || '';
+    _inputField.value         = defaultValue || '';
+    _inputCb = cb;
+    _inputOverlay.hidden = false;
+    setTimeout(function() { _inputField.focus(); _inputField.select(); }, 50);
+  }
+  function hideInputDialog() {
+    _inputOverlay.hidden = true;
+    _inputCb = null;
+  }
+  function _submitInput() {
+    var val = _inputField.value.trim();
+    var cb  = _inputCb;
+    hideInputDialog();
+    if (cb) cb(val);
+  }
+
+  document.getElementById('input-cancel').addEventListener('click', hideInputDialog);
+  document.getElementById('input-confirm').addEventListener('click', _submitInput);
+  _inputField.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); _submitInput(); }
+    if (e.key === 'Escape') { e.preventDefault(); hideInputDialog(); }
+  });
+  _inputOverlay.addEventListener('click', function(e) {
+    if (e.target === _inputOverlay) hideInputDialog();
+  });
+
+  // ── SPA history ───────────────────────────────────────────────────────────
+  history.replaceState({view: 'picker'}, '');
+
+  window.addEventListener('popstate', function(e) {
+    var state = e.state || {view: 'picker'};
+    if (state.view === 'list') {
+      openDeck(state.path, false);
+      return;
+    }
+    if (isDirty) {
+      history.pushState({view: 'list', path: currentPath}, '');
+      showDirtyDialog(function(action) {
+        if (action === 'save') {
+          saveCards(function() { history.back(); });
+        } else if (action === 'discard') {
+          history.back();
+        }
+      });
+    } else {
+      doShowPicker();
+    }
+  });
+
+  document.getElementById('back-btn').addEventListener('click', function() {
+    history.back();
+  });
+
+  document.getElementById('save-btn').addEventListener('click', function() { saveCards(); });
+  document.getElementById('add-btn').addEventListener('click',  addCard);
+
+  // ── Swipe ────────────────────────────────────────────────────────────────
+  var activeDrag = null;
+  document.addEventListener('mousemove', function(e){ if(activeDrag) activeDrag.onMove(e.clientX,e.clientY); });
+  document.addEventListener('mouseup',   function(e){ if(activeDrag){ activeDrag.onEnd(e.clientX); activeDrag=null; } });
+
+  function closeOtherCards(exceptWrap){
+    document.getElementById('cards-container').querySelectorAll('.card-wrap').forEach(function(w){
+      if(w!==exceptWrap && w._offset!==0){
+        var f=w.querySelector('.card-face');
+        f.style.transition='transform 0.2s ease'; f.style.transform='translateX(0)'; w._offset=0;
+      }
+    });
+  }
+
+  function setupSwipe(wrap, onDup, onDel){
+    var face=wrap.querySelector('.card-face'), REVEAL=84, SNAP=40;
+    wrap._offset=0; wrap._suppressClick=false;
+    var sx=0,sy=0,locked=false,dragging=false;
+
+    function isEditing(){ return !!wrap.querySelector('.card-half.editing'); }
+
+    function setX(x,anim){ face.style.transition=anim?'transform 0.2s ease':'none'; face.style.transform='translateX('+x+'px)'; }
+    function snap(x){ setX(x,true); wrap._offset=x; }
+    function start(x,y){ sx=x; sy=y; locked=false; dragging=true; wrap._suppressClick=false; face.style.transition='none'; }
+    function move(x,y){
+      if(!dragging) return;
+      var dx=x-sx, dy=y-sy;
+      if(!locked){
+        if(Math.abs(dx)<4&&Math.abs(dy)<4) return;
+        if(Math.abs(dy)>=Math.abs(dx)){ dragging=false; return; }
+        locked=true; wrap._suppressClick=true; closeOtherCards(wrap);
+      }
+      setX(Math.max(-REVEAL,Math.min(REVEAL,wrap._offset+dx)),false);
+    }
+    function end(x){
+      if(!dragging) return; dragging=false;
+      var nx=Math.max(-REVEAL,Math.min(REVEAL,wrap._offset+(x-sx)));
+      if(nx>SNAP) snap(REVEAL); else if(nx<-SNAP) snap(-REVEAL); else snap(0);
+    }
+
+    wrap.addEventListener('touchstart', function(e){
+      if(isEditing()) return;
+      start(e.touches[0].clientX, e.touches[0].clientY);
+    }, {passive:true});
+    wrap.addEventListener('touchmove', function(e){
+      if(!dragging) return;
+      var dx=e.touches[0].clientX-sx, dy=e.touches[0].clientY-sy;
+      if(!locked){
+        if(Math.abs(dx)<4&&Math.abs(dy)<4) return;
+        if(Math.abs(dy)>=Math.abs(dx)){ dragging=false; return; }
+        locked=true; wrap._suppressClick=true; closeOtherCards(wrap);
+      }
+      e.preventDefault();
+      setX(Math.max(-REVEAL,Math.min(REVEAL,wrap._offset+dx)),false);
+    }, {passive:false});
+    wrap.addEventListener('touchend', function(e){ end(e.changedTouches[0].clientX); });
+
+    face.addEventListener('mousedown', function(e){
+      if(e.target.tagName==='TEXTAREA') return;
+      if(isEditing()) return;
+      start(e.clientX, e.clientY);
+      activeDrag={onMove:move, onEnd:end};
+    });
+
+    wrap.querySelector('.action-dup').addEventListener('click', function(){ snap(0); onDup(); });
+    wrap.querySelector('.action-del').addEventListener('click', function(){ onDel(); });
+  }
+
+  // ── View switching ────────────────────────────────────────────────────────
+  function showView(v){
+    ['view-picker','view-list'].forEach(function(id){
+      document.getElementById(id).hidden = (id!==v);
+    });
+    document.getElementById('bottom-fade').hidden = (v!=='view-list');
+    if(v==='view-list'){
+      listViewEl.scrollTop = 0;
+      updateTitleScale();
+    }
+  }
+
+  function resetRawMode() {
+    isRawMode = false;
+    rawViewEl.hidden = true;
+    cardsEl.hidden = false;
+    document.getElementById('hotkey-hints').hidden = false;
+    document.getElementById('action-grid').classList.remove('raw-mode');
+    rawToggleEl.textContent = '\u270e raw CSV';
+  }
+
+  function doShowPicker(){
+    if (isRawMode) resetRawMode();
+    isDirty = false;
+    currentPath = null; searchQuery = '';
+    document.getElementById('search-input').value = '';
+    showView('view-picker');
+    loadDeckList();
+  }
+
+  // ── Deck Picker ───────────────────────────────────────────────────────────
+  function loadDeckList(){
+    var c=document.getElementById('deck-list');
+    c.innerHTML='<span class="loader"></span> Loading&hellip;';
+    api.listDecks().then(function(decks){
+      if(!decks.length){
+        c.innerHTML='<div class="empty-msg">No decks yet.<br>Click &ldquo;+ New Deck&rdquo; or &ldquo;&#8593; Import CSV/TSV&rdquo; to get started.</div>';
+        return;
+      }
+      var html='';
+      for(var i=0;i<decks.length;i++)
+        html+='<div class="deck-item" data-i="'+i+'">'+
+          '<span class="deck-title">'+esc(decks[i].title)+'</span>'+
+          '<span class="deck-actions">'+
+            '<span class="deck-export-btn" data-i="'+i+'" title="Export/Download">&#8595;</span>'+
+            '<span class="deck-edit-btn" data-i="'+i+'" title="Rename">&#9998;</span>'+
+          '</span></div>';
+      c.innerHTML=html;
+      c.querySelectorAll('.deck-item').forEach(function(el){
+        var idx=parseInt(el.dataset.i,10);
+        el.addEventListener('click',function(e){
+          if(e.target.classList.contains('deck-edit-btn')) return;
+          if(e.target.classList.contains('deck-export-btn')) return;
+          openDeck(decks[idx].path);
+        });
+      });
+      c.querySelectorAll('.deck-edit-btn').forEach(function(btn){
+        var idx=parseInt(btn.dataset.i,10);
+        btn.addEventListener('click',function(e){
+          e.stopPropagation();
+          renameDeck(decks[idx].path, decks[idx].title);
+        });
+      });
+      c.querySelectorAll('.deck-export-btn').forEach(function(btn){
+        var idx=parseInt(btn.dataset.i,10);
+        btn.addEventListener('click',function(e){
+          e.stopPropagation();
+          exportDeck(decks[idx].path, decks[idx].name);
+        });
+      });
+    }).catch(function(e){c.innerHTML='<div class="empty-msg" style="color:#e74c3c;">'+esc(e.message)+'</div>';});
+  }
+
+  function newDeck(){
+    showInputDialog('New Deck', 'Name or name.tsv for tab-separated\u2026', '', function(t) {
+      if (!t) return;
+      var path=deckPath(t);
+      if (!path) { showBanner('picker-banner','Use letters, numbers, spaces, underscores and hyphens only.',true); return; }
+      var delim=delimFromPath(path);
+      var body=serializeCSV(['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'],[],delim);
+      api.writeDeck(path, body)
+        .then(function(){ showBanner('picker-banner','Deck created.',false); loadDeckList(); })
+        .catch(function(e){ showBanner('picker-banner','Error: '+e.message,true); });
+    });
+  }
+
+  function renameDeck(oldPath, oldTitle){
+    showInputDialog('Rename "'+oldTitle+'"', 'New name or name.tsv\u2026', oldTitle, function(t) {
+      if (!t || t === oldTitle) return;
+      var newPath=deckPath(t);
+      if (!newPath) { showBanner('picker-banner','Use letters, numbers, spaces, underscores and hyphens only.',true); return; }
+      api.renameDeck(oldPath, newPath)
+        .then(function(){ loadDeckList(); })
+        .catch(function(e){ showBanner('picker-banner','Rename failed: '+e.message,true); });
+    });
+  }
+
+  // ── Export (download) ─────────────────────────────────────────────────────
+  function exportDeck(path, filename) {
+    api.readDeck(path).then(function(text) {
+      var blob = new Blob([text], {type: 'text/plain'});
+      var url  = URL.createObjectURL(blob);
+      var a    = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+    }).catch(function(e){ showBanner('picker-banner','Export failed: '+e.message,true); });
+  }
+
+  // ── Import (file picker) ──────────────────────────────────────────────────
+  document.getElementById('import-input').addEventListener('change', function(e) {
+    var files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    var pending = files.length, errors = [];
+    files.forEach(function(file) {
+      var name = file.name;
+      if (!/\.(csv|tsv)$/i.test(name)) {
+        errors.push(name + ': not a CSV/TSV file');
+        if (--pending === 0) _importDone(errors);
+        return;
+      }
+      var path = '/anki/' + name;
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        api.writeDeck(path, ev.target.result)
+          .then(function() { if (--pending === 0) _importDone(errors); })
+          .catch(function(er) { errors.push(name+': '+er.message); if(--pending===0) _importDone(errors); });
+      };
+      reader.onerror = function() {
+        errors.push(name + ': read error');
+        if (--pending === 0) _importDone(errors);
+      };
+      reader.readAsText(file);
+    });
+    // Reset input so re-picking the same file fires change again
+    this.value = '';
+  });
+
+  function _importDone(errors) {
+    if (errors.length) {
+      showBanner('picker-banner', errors.join('; '), true);
+    } else {
+      showBanner('picker-banner', 'Import complete.', false);
+    }
+    loadDeckList();
+  }
+
+  // ── FSAA folder picker ────────────────────────────────────────────────────
+  if (window.showDirectoryPicker) {
+    document.getElementById('link-folder-btn').style.display = '';
+    document.getElementById('link-folder-btn').addEventListener('click', function() {
+      window.showDirectoryPicker({ id: 'anki-decks', mode: 'readwrite' })
+        .then(function(dir) {
+          api = new LocalFsBackend(dir);
+          showBanner('picker-banner', 'Linked to folder: ' + dir.name, false);
+          loadDeckList();
+        })
+        .catch(function(e) {
+          if (e.name !== 'AbortError') showBanner('picker-banner', 'Folder link failed: '+e.message, true);
+        });
+    });
+  }
+
+  // ── Card List ─────────────────────────────────────────────────────────────
+  function openDeck(path, pushHistory){
+    currentPath = path;
+    currentDelim = delimFromPath(path);
+    isDirty = false;
+    var name=path.replace(/^.*\//,'').replace(/\.(csv|tsv)$/i,'');
+    titleEl.textContent=name;
+    searchQuery=''; document.getElementById('search-input').value='';
+    rows=[]; headers=[];
+    document.getElementById('cards-container').innerHTML =
+      '<div style="text-align:center;padding:40px 20px;color:#95a5a6;">' +
+      '<span class="loader"></span> Loading\u2026</div>';
+    document.getElementById('list-empty').hidden = true;
+    document.getElementById('no-results').hidden = true;
+    showView('view-list');
+    if(pushHistory !== false) history.pushState({view:'list', path:path}, '');
+    api.readDeck(path)
+      .then(function(text){
+        var p=parseCSV(text, currentDelim);
+        headers=p.headers.length>=6?p.headers
+          :['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'];
+        rows=p.rows.map(function(r){
+          var o=r.slice(0,6); while(o.length<6)o.push('0');
+          if(!o[2])o[2]='0'; if(!o[3])o[3]='2500'; if(!o[4])o[4]='0'; if(!o[5])o[5]='0';
+          return o;
+        });
+        renderCards();
+      })
+      .catch(function(e){showBanner('list-banner','Failed to load: '+e.message,true);});
+  }
+
+  function renderCards(){
+    var c       = document.getElementById('cards-container');
+    var empty   = document.getElementById('list-empty');
+    var noMatch = document.getElementById('no-results');
+    c.innerHTML=''; empty.hidden=true; noMatch.hidden=true;
+    if(!rows.length){ empty.hidden=false; return; }
+    var q=searchQuery, shown=0;
+    for(var i=0;i<rows.length;i++){
+      if(!matchesQuery(rows[i],q)) continue;
+      var wrap=makeCard(i,q);
+      c.appendChild(wrap);
+      wrap.querySelectorAll('.card-edit').forEach(function(ta){ ta.style.height='1px'; });
+      shown++;
+    }
+    if(shown===0) noMatch.hidden=false;
+  }
+
+  function makeCard(i, highlight){
+    var wrap=document.createElement('div');
+    wrap.className='card-wrap';
+    wrap.innerHTML=
+      '<div class="action-dup">&#11036;<span>Copy</span></div>'+
+      '<div class="action-del">&#10006;<span>Delete</span></div>'+
+      '<div class="card-face">'+
+        '<div class="card-half">'+
+          '<div class="card-preview"></div>'+
+          '<textarea class="card-edit" data-row="'+i+'" data-col="0"></textarea>'+
+        '</div>'+
+        '<div class="card-half">'+
+          '<div class="card-preview"></div>'+
+          '<textarea class="card-edit" data-row="'+i+'" data-col="1"></textarea>'+
+        '</div>'+
+      '</div>';
+
+    var cardHalves = Array.from(wrap.querySelectorAll('.card-half'));
+    var cardTas    = cardHalves.map(function(h){ return h.querySelector('textarea'); });
+
+    cardHalves.forEach(function(half,col){
+      var preview=half.querySelector('.card-preview');
+      var ta=cardTas[col];
+      ta.value=rows[i][col];
+      preview.innerHTML=md(rows[i][col], highlight);
+      autoResize(ta);
+
+      half.addEventListener('click',function(){
+        if(wrap._suppressClick){wrap._suppressClick=false; return;}
+        if(wrap._offset!==0){
+          var face=wrap.querySelector('.card-face');
+          face.style.transition='transform 0.2s ease'; face.style.transform='translateX(0)'; wrap._offset=0;
+          return;
+        }
+        half.classList.add('editing'); ta.focus(); autoResize(ta);
+      });
+      ta.addEventListener('input',function(){ rows[i][col]=this.value; isDirty=true; autoResize(this); });
+      ta.addEventListener('focus',function(){
+        if(!half.classList.contains('editing')){
+          closeOtherCards(wrap);
+          half.classList.add('editing');
+          autoResize(this);
+          this.scrollIntoView({behavior:'smooth',block:'center'});
+        }
+      });
+      ta.addEventListener('blur',function(){
+        half.classList.remove('editing');
+        preview.innerHTML=md(this.value, searchQuery||'');
+        this.style.height='';
+        resetZoom();
+      });
+      ta.addEventListener('keydown',function(e){
+        if(e.key!=='Tab') return;
+        e.preventDefault();
+        var cont=document.getElementById('cards-container');
+        var allWraps=Array.from(cont.querySelectorAll('.card-wrap'));
+        if(!e.shiftKey){
+          if(col===0){
+            cardHalves[1].classList.add('editing'); cardTas[1].focus();
+          } else {
+            var nw=allWraps[allWraps.indexOf(wrap)+1];
+            if(nw){
+              var nh=nw.querySelectorAll('.card-half');
+              nh[0].classList.add('editing'); nh[0].querySelector('textarea').focus();
+              nh[0].scrollIntoView({behavior:'smooth',block:'nearest'});
+            }
+          }
+        } else {
+          if(col===1){
+            cardHalves[0].classList.add('editing'); cardTas[0].focus();
+          } else {
+            var pw=allWraps[allWraps.indexOf(wrap)-1];
+            if(pw){
+              var ph=pw.querySelectorAll('.card-half');
+              ph[1].classList.add('editing'); ph[1].querySelector('textarea').focus();
+              ph[1].scrollIntoView({behavior:'smooth',block:'nearest'});
+            }
+          }
+        }
+      });
+    });
+
+    setupSwipe(wrap,
+      function(){dupCard(i);},
+      function(){deleteCard(i);}
+    );
+
+    var outer=document.createElement('div');
+    outer.className='card-outer';
+    outer.appendChild(wrap);
+
+    var btnDup=document.createElement('button');
+    btnDup.className='margin-btn margin-dup'; btnDup.title='Duplicate';
+    btnDup.textContent='+';
+    var btnDel=document.createElement('button');
+    btnDel.className='margin-btn margin-del'; btnDel.title='Delete';
+    btnDel.textContent='-';
+    outer.appendChild(btnDup);
+    outer.appendChild(btnDel);
+
+    btnDup.addEventListener('click',function(e){e.stopPropagation();dupCard(i);});
+    btnDel.addEventListener('click',function(e){e.stopPropagation();deleteCard(i);});
+
+    return outer;
+  }
+
+  function addCard(){
+    rows.push(['','','0','2500','0','0']);
+    isDirty=true;
+    searchQuery=''; document.getElementById('search-input').value='';
+    renderCards();
+    var halves=document.getElementById('cards-container').querySelectorAll('.card-half');
+    if(halves.length>=2){
+      var last=halves[halves.length-2];
+      last.click();
+      last.scrollIntoView({behavior:'smooth',block:'center'});
+    }
+  }
+
+  function deleteCard(i){ rows.splice(i,1); isDirty=true; renderCards(); }
+  function dupCard(i){
+    var copy=rows[i].slice(); copy[2]='0'; copy[3]='2500'; copy[4]='0'; copy[5]='0';
+    rows.splice(i+1,0,copy); isDirty=true; renderCards();
+  }
+
+  function saveCards(onSuccess){
+    var btn=document.getElementById('save-btn');
+    btn.disabled=true; btn.textContent='Saving\u2026';
+    var ok=false;
+    api.writeDeck(currentPath, serializeCSV(headers,rows,currentDelim))
+      .then(function(){
+        isDirty=false; ok=true;
+        btn.disabled=false; btn.textContent='Saved'; btn.classList.add('saved');
+        setTimeout(function(){ btn.textContent='Save'; btn.classList.remove('saved'); },2000);
+        if(onSuccess) onSuccess();
+      })
+      .catch(function(e){showBanner('list-banner','Save failed: '+e.message,true);})
+      .finally(function(){ if(!ok){btn.disabled=false; btn.textContent='Save';} });
+  }
+
+  // ── Raw CSV mode ──────────────────────────────────────────────────────────
+  var rawToggleEl = document.getElementById('raw-toggle');
+  var rawViewEl   = document.getElementById('raw-view');
+  var rawTa       = document.getElementById('raw-textarea');
+  var cardsEl     = document.getElementById('cards-container');
+  var listEmptyEl = document.getElementById('list-empty');
+  var noResultsEl = document.getElementById('no-results');
+
+  function enterRawMode() {
+    isRawMode = true;
+    rawTa.value = serializeCSV(headers.length ? headers
+      : ['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'], rows, currentDelim);
+    rawViewEl.hidden  = false;
+    cardsEl.hidden    = true;
+    listEmptyEl.hidden = true;
+    noResultsEl.hidden = true;
+    document.getElementById('hotkey-hints').hidden = true;
+    document.getElementById('action-grid').classList.add('raw-mode');
+    rawTa.focus();
+  }
+
+  function exitRawMode() {
+    var parsed = parseCSV(rawTa.value, sniffDelim(rawTa.value));
+    if (parsed.headers.length >= 2) {
+      headers = parsed.headers.length >= 6 ? parsed.headers
+        : ['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'];
+      rows = parsed.rows.map(function(r) {
+        var o = r.slice(0,6); while(o.length<6) o.push('0');
+        if(!o[2])o[2]='0'; if(!o[3])o[3]='2500'; if(!o[4])o[4]='0'; if(!o[5])o[5]='0';
+        return o;
+      });
+      isDirty = true;
+    }
+    resetRawMode();
+    renderCards();
+  }
+
+  rawToggleEl.addEventListener('click', function(e) {
+    e.preventDefault();
+    if (isRawMode) exitRawMode(); else enterRawMode();
+  });
+
+  document.getElementById('raw-grid-back').addEventListener('click', exitRawMode);
+  document.getElementById('raw-grid-copy').addEventListener('click', function() {
+    copyText(rawTa.value, this);
+  });
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  document.addEventListener('keydown', function(e) {
+    var mod = e.metaKey || e.ctrlKey;
+    if (!mod) return;
+    var inList = !document.getElementById('view-list').hidden;
+    var ta     = document.activeElement;
+    var isCard = ta && ta.classList.contains('card-edit');
+    switch (e.key) {
+      case 'Enter':
+        if (inList) { e.preventDefault(); addCard(); }
+        break;
+      case 's': case 'S':
+        if (inList) { e.preventDefault(); saveCards(); }
+        break;
+      case 'b': case 'B':
+        if (isCard) { e.preventDefault(); toggleDecoration(ta, 'bold'); }
+        break;
+      case 'i': case 'I':
+        if (isCard) { e.preventDefault(); toggleDecoration(ta, 'italic'); }
+        break;
+      case 'd': case 'D':
+        if (isCard) {
+          var idx = parseInt(ta.dataset.row, 10);
+          if (!isNaN(idx)) { e.preventDefault(); dupCard(idx); }
+        }
+        break;
+    }
+  });
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  (function() {
+    var mac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+    var M   = mac ? '\u2318' : 'Ctrl+';
+    var RET = mac ? '\u21b5' : 'Enter';
+    document.getElementById('hint-mods').innerHTML =
+      'Tab \u00b7 sides &nbsp;&nbsp; ' +
+      M + 'B \u00b7 bold &nbsp;&nbsp; ' +
+      M + 'I \u00b7 italic &nbsp;&nbsp; ' +
+      M + 'S \u00b7 save &nbsp;&nbsp; ' +
+      M + 'D \u00b7 dup &nbsp;&nbsp; ' +
+      M + RET + ' \u00b7 new card &nbsp;&nbsp; ';
+  })();
+  loadDeckList();
+</script>
+</body>
+</html>
