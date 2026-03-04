@@ -178,8 +178,6 @@ void InstapaperSettingsActivity::handleSelection() {
 
     std::string token, tokenSecret;
     if (InstapaperClient::authenticate(pendingUsername, pendingPassword, token, tokenSecret)) {
-      INSTAPAPER_STORE.setUsername(pendingUsername);
-      INSTAPAPER_STORE.setPassword(pendingPassword);
       INSTAPAPER_STORE.setCredentials(token, tokenSecret);
       INSTAPAPER_STORE.saveToFile();
       statusMessage = "Authenticated!";

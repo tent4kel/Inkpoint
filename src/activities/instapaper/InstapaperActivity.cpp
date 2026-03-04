@@ -381,7 +381,7 @@ void InstapaperActivity::loadQueueFile() {
 }
 
 void InstapaperActivity::startBackgroundSync() {
-  if (!INSTAPAPER_STORE.hasCredentials() && !INSTAPAPER_STORE.hasLoginCredentials()) {
+  if (!INSTAPAPER_STORE.hasCredentials()) {
     syncStatus = tr(STR_NO_CREDENTIALS);
     syncComplete = true;
     updateRequired = true;
@@ -460,26 +460,6 @@ void InstapaperActivity::backgroundSyncWork() {
     LOG_INF("INS", "NTP: synced in %d ms (t=%lld)", ntpAttempts * 100, (long long)time(nullptr));
   } else {
     LOG_INF("INS", "NTP: already set (t=%lld), skip", (long long)time(nullptr));
-  }
-
-  // Authenticate if needed
-  if (!INSTAPAPER_STORE.hasCredentials() && INSTAPAPER_STORE.hasLoginCredentials()) {
-    syncStatus = tr(STR_AUTHENTICATING);
-    updateRequired = true;
-    LOG_INF("INS", "Auth: starting — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    std::string token, tokenSecret;
-    if (InstapaperClient::authenticate(INSTAPAPER_STORE.getUsername(), INSTAPAPER_STORE.getPassword(), token,
-                                       tokenSecret)) {
-      INSTAPAPER_STORE.setCredentials(token, tokenSecret);
-      INSTAPAPER_STORE.saveToFile();
-      LOG_INF("INS", "Auth: success — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    } else {
-      LOG_ERR("INS", "Auth: failed — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-      syncStatus = tr(STR_AUTH_FAILED);
-      syncComplete = true;
-      updateRequired = true;
-      return;
-    }
   }
 
   // On re-entries within the same boot session, skip listBookmarks. Each
