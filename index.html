@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CrossPoint - Deck Editor</title>
+  <title>Flashcard Editor for Inkpoint</title>
   <style>
     * { box-sizing: border-box; }
     html, body {
@@ -136,8 +136,6 @@
     /* ── Deck picker ──────────────────────────────────────────────── */
     h1 {
       color: #2c3e50;
-      border-bottom: 2px solid #3498db;
-      padding-bottom: 10px;
       margin-bottom: 10px;
     }
     .deck-item {
@@ -386,7 +384,7 @@
     #search-input:focus { outline: none; box-shadow: 0 2px 8px rgba(52,152,219,0.35); }
 
     /* ── Deck picker edit/export buttons ──────────────────────────── */
-    .deck-edit-btn, .deck-export-btn {
+    .deck-edit-btn, .deck-export-btn, .deck-del-btn {
       font-size: 1.05em;
       color: #ccc;
       cursor: pointer;
@@ -397,6 +395,55 @@
     }
     .deck-edit-btn:hover   { color: #7f8c8d; background: #e8eaed; }
     .deck-export-btn:hover { color: #8e44ad; background: #f0e8f5; }
+    .deck-del-btn:hover    { color: #e74c3c; background: #fdf0f0; }
+
+    /* ── Delete confirm dialog ────────────────────────────────────── */
+    #del-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 400;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #del-overlay[hidden] { display: none; }
+    #del-dialog {
+      background: white;
+      border-radius: 16px;
+      padding: 24px 20px 20px;
+      max-width: 300px;
+      width: 90%;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    }
+    #del-dialog h3 { margin: 0 0 6px; font-size: 1.1em; color: #2c3e50; }
+    #del-dialog p  { margin: 0 0 18px; font-size: 0.9em; color: #7f8c8d; }
+    .del-btns { display: flex; gap: 8px; }
+    .del-btns button {
+      flex: 1;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.88em;
+      font-weight: 500;
+      font-family: inherit;
+    }
+    .del-cancel  { background: #ecf0f1; color: #555; }
+    .del-confirm { background: #e74c3c; color: white; }
+
+    /* ── Picker footer ────────────────────────────────────────────── */
+    #picker-footer {
+      text-align: center;
+      color: #ccc;
+      font-size: 0.75em;
+      letter-spacing: 0.03em;
+      padding: 28px 0 40px;
+      line-height: 2;
+      user-select: none;
+    }
+    #picker-footer a { color: #7787cb; text-decoration: none; }
+    #picker-footer a:hover { text-decoration: underline; }
 
     /* ── Picker action row ────────────────────────────────────────── */
     .picker-actions {
@@ -525,12 +572,24 @@
   </div>
 </div>
 
+<!-- ── Delete confirm dialog ──────────────────────────────────────────── -->
+<div id="del-overlay" hidden>
+  <div id="del-dialog">
+    <h3 id="del-title">Delete deck?</h3>
+    <p>This cannot be undone.</p>
+    <div class="del-btns">
+      <button class="del-cancel"  id="del-cancel">Cancel</button>
+      <button class="del-confirm" id="del-confirm">Delete</button>
+    </div>
+  </div>
+</div>
+
 <!-- Hidden file input for import -->
 <input type="file" id="import-input" multiple accept=".csv,.tsv" style="display:none" />
 
 <!-- ── View: Deck Picker ─────────────────────────────────────────────── -->
 <div id="view-picker">
-  <h1>Anki Deck Editor</h1>
+  <h1>Flashcard Editor for Inkpoint</h1>
   <div class="picker-actions">
     <button class="picker-btn picker-btn-new"    onclick="newDeck()">+ New Deck</button>
     <button class="picker-btn picker-btn-import" onclick="document.getElementById('import-input').click()">&#8593; Import CSV/TSV</button>
@@ -538,6 +597,11 @@
   </div>
   <div id="picker-banner" class="message"></div>
   <div id="deck-list"><span class="loader"></span> Loading&hellip;</div>
+  <div id="picker-footer">
+    <div>Edit Anki-compatible flashcard decks offline &nbsp;&middot;&nbsp; decks live in your browser via OPFS</div>
+    <div>Import CSV/TSV from disk &nbsp;&middot;&nbsp; export to download &nbsp;&middot;&nbsp; works offline on Chrome, Edge, Safari &amp; Firefox</div>
+    <div><a href="https://github.com/tent4kel/Inkpoint" target="_blank" rel="noopener">tent4kel/Inkpoint on GitHub</a></div>
+  </div>
 </div>
 
 <!-- ── View: Card List ───────────────────────────────────────────────── -->
@@ -614,11 +678,11 @@
       return file.text();
     }
     async writeDeck(path, content) {
-      var name = _nameFromPath(path);
-      var dir  = await this._ankiDir();
-      var fh   = await dir.getFileHandle(name, { create: true });
-      var w    = await fh.createWritable();
-      await w.write(content);
+      var name  = _nameFromPath(path);
+      var dir   = await this._ankiDir();
+      var fh    = await dir.getFileHandle(name, { create: true });
+      var w     = await fh.createWritable();
+      await w.write(new TextEncoder().encode(content));
       await w.close();
     }
     async renameDeck(from, to) {
@@ -656,7 +720,7 @@
     async writeDeck(path, content) {
       var fh = await this._dir.getFileHandle(_nameFromPath(path), { create: true });
       var w  = await fh.createWritable();
-      await w.write(content);
+      await w.write(new TextEncoder().encode(content));
       await w.close();
     }
     async renameDeck(from, to) {
@@ -1052,7 +1116,8 @@
           '<span class="deck-title">'+esc(decks[i].title)+'</span>'+
           '<span class="deck-actions">'+
             '<span class="deck-export-btn" data-i="'+i+'" title="Export/Download">&#8595;</span>'+
-            '<span class="deck-edit-btn" data-i="'+i+'" title="Rename">&#9998;</span>'+
+            '<span class="deck-edit-btn"   data-i="'+i+'" title="Rename">&#9998;</span>'+
+            '<span class="deck-del-btn"    data-i="'+i+'" title="Delete">&#128465;</span>'+
           '</span></div>';
       c.innerHTML=html;
       c.querySelectorAll('.deck-item').forEach(function(el){
@@ -1060,6 +1125,7 @@
         el.addEventListener('click',function(e){
           if(e.target.classList.contains('deck-edit-btn')) return;
           if(e.target.classList.contains('deck-export-btn')) return;
+          if(e.target.classList.contains('deck-del-btn')) return;
           openDeck(decks[idx].path);
         });
       });
@@ -1075,6 +1141,13 @@
         btn.addEventListener('click',function(e){
           e.stopPropagation();
           exportDeck(decks[idx].path, decks[idx].name);
+        });
+      });
+      c.querySelectorAll('.deck-del-btn').forEach(function(btn){
+        var idx=parseInt(btn.dataset.i,10);
+        btn.addEventListener('click',function(e){
+          e.stopPropagation();
+          confirmDeleteDeck(decks[idx].path, decks[idx].title);
         });
       });
     }).catch(function(e){c.innerHTML='<div class="empty-msg" style="color:#e74c3c;">'+esc(e.message)+'</div>';});
@@ -1104,10 +1177,37 @@
     });
   }
 
+  // ── Delete deck with confirm ──────────────────────────────────────────────
+  var _delCb = null;
+  var _delOverlay = document.getElementById('del-overlay');
+  var _delTitle   = document.getElementById('del-title');
+
+  function confirmDeleteDeck(path, title) {
+    _delTitle.textContent = 'Delete \u201c' + title + '\u201d?';
+    _delCb = function() {
+      api.deleteDeck(path)
+        .then(function(){ loadDeckList(); })
+        .catch(function(e){ showBanner('picker-banner','Delete failed: '+e.message,true); });
+    };
+    _delOverlay.hidden = false;
+  }
+
+  document.getElementById('del-cancel').addEventListener('click', function() {
+    _delOverlay.hidden = true; _delCb = null;
+  });
+  document.getElementById('del-confirm').addEventListener('click', function() {
+    _delOverlay.hidden = true;
+    var cb = _delCb; _delCb = null;
+    if (cb) cb();
+  });
+  _delOverlay.addEventListener('click', function(e) {
+    if (e.target === _delOverlay) { _delOverlay.hidden = true; _delCb = null; }
+  });
+
   // ── Export (download) ─────────────────────────────────────────────────────
   function exportDeck(path, filename) {
     api.readDeck(path).then(function(text) {
-      var blob = new Blob([text], {type: 'text/plain'});
+      var blob = new Blob([new TextEncoder().encode(text)], {type: 'text/plain;charset=utf-8'});
       var url  = URL.createObjectURL(blob);
       var a    = document.createElement('a');
       a.href = url; a.download = filename;
@@ -1140,7 +1240,7 @@
         errors.push(name + ': read error');
         if (--pending === 0) _importDone(errors);
       };
-      reader.readAsText(file);
+      reader.readAsText(file, 'UTF-8');
     });
     // Reset input so re-picking the same file fires change again
     this.value = '';
