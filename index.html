@@ -134,9 +134,20 @@
     .input-confirm { background: #3498db; color: white; }
 
     /* ── Deck picker ──────────────────────────────────────────────── */
+    /* Match #deck-title-large exactly so the title doesn't jump on navigation */
     h1 {
+      font-size: 2em;
+      font-weight: 700;
+      line-height: 1.2;
       color: #2c3e50;
-      margin-bottom: 10px;
+      text-align: center;
+      margin: 0 0 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    @media (hover: hover) {
+      h1, #deck-title-large { margin-top: 24px; }
     }
     .deck-item {
       padding: 12px 16px;
@@ -1117,7 +1128,7 @@
           '<span class="deck-actions">'+
             '<span class="deck-export-btn" data-i="'+i+'" title="Export/Download">&#8595;</span>'+
             '<span class="deck-edit-btn"   data-i="'+i+'" title="Rename">&#9998;</span>'+
-            '<span class="deck-del-btn"    data-i="'+i+'" title="Delete">&#128465;</span>'+
+            '<span class="deck-del-btn"    data-i="'+i+'" title="Delete">&times;</span>'+
           '</span></div>';
       c.innerHTML=html;
       c.querySelectorAll('.deck-item').forEach(function(el){
