@@ -116,7 +116,7 @@ void HomeActivity::onEnter() {
 
   // Check if OPDS browser URL is configured
   hasOpdsUrl = strlen(SETTINGS.opdsServerUrl) > 0;
-  hasInstapaper = INSTAPAPER_STORE.hasCredentials() || INSTAPAPER_STORE.hasLoginCredentials();
+  hasInstapaper = INSTAPAPER_STORE.hasCredentials();
 
   selectorIndex = 0;
 
