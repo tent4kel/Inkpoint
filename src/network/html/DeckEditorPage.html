@@ -578,7 +578,7 @@
 
 <script>
   // ── State ────────────────────────────────────────────────────────────────
-  var currentPath = null;
+  var currentPath = null, currentDelim = ',';
   var headers     = [];
   var rows        = [];
   var searchQuery = '';
@@ -637,7 +637,10 @@
   }
 
   // ── RFC 4180 CSV ─────────────────────────────────────────────────────────
-  function parseCSV(text) {
+  function delimFromPath(path){ return /\.tsv$/i.test(path) ? '\t' : ','; }
+  function sniffDelim(text){ for(var i=0;i<text.length;i++){ if(text[i]==='\n')break; if(text[i]==='\t')return '\t'; } return ','; }
+  function parseCSV(text, delim) {
+    if(!delim) delim=sniffDelim(text);
     var result=[],row=[],field='',inQ=false,i=0,c;
     for(;i<text.length;i++){
       c=text[i];
@@ -647,7 +650,7 @@
         else{field+=c;}
       }else{
         if(c==='"'){inQ=true;}
-        else if(c===','){row.push(field);field='';}
+        else if(c===delim){row.push(field);field='';}
         else if(c==='\r'&&text[i+1]==='\n'){row.push(field);result.push(row);row=[];field='';i++;}
         else if(c==='\n'){row.push(field);result.push(row);row=[];field='';}
         else{field+=c;}
@@ -659,11 +662,20 @@
     }
     return result.length ? {headers:result[0],rows:result.slice(1)} : {headers:[],rows:[]};
   }
-  function csvField(s){s=String(s);return/[,"\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
-  function serializeCSV(hdrs,dataRows){
-    var lines=[hdrs.map(csvField).join(',')];
-    for(var i=0;i<dataRows.length;i++) lines.push(dataRows[i].map(csvField).join(','));
+  function csvField(s,delim){s=String(s);var re=delim==='\t'?/["\n\r\t]/:/[,"\n\r]/;return re.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+  function serializeCSV(hdrs,dataRows,delim){
+    if(!delim)delim=',';
+    var lines=[hdrs.map(function(f){return csvField(f,delim);}).join(delim)];
+    for(var i=0;i<dataRows.length;i++) lines.push(dataRows[i].map(function(f){return csvField(f,delim);}).join(delim));
     return lines.join('\r\n')+'\r\n';
+  }
+  // Returns the /anki/ path for a user-supplied name (e.g. "vocab", "vocab.csv", "vocab.tsv").
+  // Returns null if the base name is invalid.
+  var DECK_BASE_RE = /^[\w\s\-]+$/;
+  function deckPath(t) {
+    var ext=/\.(csv|tsv)$/i.exec(t), base=ext?t.slice(0,-ext[0].length):t;
+    if(!DECK_BASE_RE.test(base)) return null;
+    return '/anki/'+base+(ext?ext[0].toLowerCase():'.csv');
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -996,32 +1008,25 @@
       .catch(function(e){c.innerHTML='<div class="empty-msg" style="color:#e74c3c;">'+esc(e.message)+'</div>';});
   }
 
-  var DECK_NAME_RE = /^[\w\s\-]+$/;
-
   function newDeck(){
-    showInputDialog('New Deck', 'Deck name\u2026', '', function(t) {
+    showInputDialog('New Deck', 'Name or name.tsv for tab-separated\u2026', '', function(t) {
       if (!t) return;
-      if (!DECK_NAME_RE.test(t)) {
-        showBanner('picker-banner','Use letters, numbers, spaces, underscores and hyphens only.',true);
-        return;
-      }
-      var path='/anki/'+t+'.csv';
-      var csv=serializeCSV(['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'],[]);
-      fetch('/api/deck?path='+encodeURIComponent(path),{method:'POST',headers:{'Content-Type':'text/plain'},body:csv})
+      var path=deckPath(t);
+      if (!path) { showBanner('picker-banner','Use letters, numbers, spaces, underscores and hyphens only.',true); return; }
+      var delim=delimFromPath(path);
+      var body=serializeCSV(['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'],[],delim);
+      fetch('/api/deck?path='+encodeURIComponent(path),{method:'POST',headers:{'Content-Type':'text/plain'},body:body})
         .then(function(r){if(!r.ok)return r.text().then(function(b){throw new Error(b);});
-          showBanner('picker-banner','Deck "'+t+'" created.',false); loadDeckList();})
+          showBanner('picker-banner','Deck created.',false); loadDeckList();})
         .catch(function(e){showBanner('picker-banner','Error: '+e.message,true);});
     });
   }
 
   function renameDeck(oldPath, oldTitle){
-    showInputDialog('Rename "'+oldTitle+'"', 'New name\u2026', oldTitle, function(t) {
+    showInputDialog('Rename "'+oldTitle+'"', 'New name or name.tsv\u2026', oldTitle, function(t) {
       if (!t || t === oldTitle) return;
-      if (!DECK_NAME_RE.test(t)) {
-        showBanner('picker-banner','Use letters, numbers, spaces, underscores and hyphens only.',true);
-        return;
-      }
-      var newPath='/anki/'+t+'.csv';
+      var newPath=deckPath(t);
+      if (!newPath) { showBanner('picker-banner','Use letters, numbers, spaces, underscores and hyphens only.',true); return; }
       fetch('/api/rename-deck?from='+encodeURIComponent(oldPath)+'&to='+encodeURIComponent(newPath),{method:'POST'})
         .then(function(r){if(!r.ok)return r.text().then(function(b){throw new Error(b);}); loadDeckList();})
         .catch(function(e){showBanner('picker-banner','Rename failed: '+e.message,true);});
@@ -1033,8 +1038,9 @@
   // from popstate (forward navigation) to avoid doubling up entries.
   function openDeck(path, pushHistory){
     currentPath = path;
+    currentDelim = delimFromPath(path);
     isDirty = false;
-    var name=path.replace(/^.*\//,'').replace(/\.csv$/i,'');
+    var name=path.replace(/^.*\//,'').replace(/\.(csv|tsv)$/i,'');
     titleEl.textContent=name;
     searchQuery=''; document.getElementById('search-input').value='';
     rows=[]; headers=[];
@@ -1050,7 +1056,7 @@
     fetch('/api/deck?path='+encodeURIComponent(path))
       .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status); return r.text();})
       .then(function(text){
-        var p=parseCSV(text);
+        var p=parseCSV(text, currentDelim);
         headers=p.headers.length>=6?p.headers
           :['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'];
         rows=p.rows.map(function(r){
@@ -1220,7 +1226,7 @@
     btn.disabled=true; btn.textContent='Saving\u2026';
     var ok=false;
     fetch('/api/deck?path='+encodeURIComponent(currentPath),{
-      method:'POST', headers:{'Content-Type':'text/plain'}, body:serializeCSV(headers,rows)
+      method:'POST', headers:{'Content-Type':'text/plain'}, body:serializeCSV(headers,rows,currentDelim)
     })
       .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});
         isDirty=false; ok=true;
@@ -1243,7 +1249,7 @@
   function enterRawMode() {
     isRawMode = true;
     rawTa.value = serializeCSV(headers.length ? headers
-      : ['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'], rows);
+      : ['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'], rows, currentDelim);
     rawViewEl.hidden  = false;
     cardsEl.hidden    = true;
     listEmptyEl.hidden = true;
@@ -1254,7 +1260,7 @@
   }
 
   function exitRawMode() {
-    var parsed = parseCSV(rawTa.value);
+    var parsed = parseCSV(rawTa.value, sniffDelim(rawTa.value));
     if (parsed.headers.length >= 2) {
       headers = parsed.headers.length >= 6 ? parsed.headers
         : ['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'];

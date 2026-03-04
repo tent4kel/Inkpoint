@@ -5,15 +5,23 @@
 
 namespace {
 
-bool needsQuoting(const std::string& field) {
+char sniffDelimiter(const char* buf, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    if (buf[i] == '\n' || buf[i] == '\r') break;
+    if (buf[i] == '\t') return '\t';
+  }
+  return ',';
+}
+
+bool needsQuoting(const std::string& field, char delim) {
   for (char c : field) {
-    if (c == ',' || c == '"' || c == '\n' || c == '\r') return true;
+    if (c == delim || c == '"' || c == '\n' || c == '\r') return true;
   }
   return false;
 }
 
-std::string quoteField(const std::string& field) {
-  if (!needsQuoting(field)) return field;
+std::string quoteField(const std::string& field, char delim) {
+  if (!needsQuoting(field, delim)) return field;
   std::string result = "\"";
   for (char c : field) {
     if (c == '"') result += "\"\"";
@@ -25,7 +33,12 @@ std::string quoteField(const std::string& field) {
 
 }  // namespace
 
-CsvRow CsvParser::parseLine(const char* data, size_t len) {
+char CsvParser::delimiterForPath(const std::string& path) {
+  if (path.size() >= 4 && path.substr(path.size() - 4) == ".tsv") return '\t';
+  return ',';
+}
+
+CsvRow CsvParser::parseLine(const char* data, size_t len, char delim) {
   CsvRow row;
   std::string field;
   bool inQuotes = false;
@@ -37,11 +50,9 @@ CsvRow CsvParser::parseLine(const char* data, size_t len) {
     if (inQuotes) {
       if (c == '"') {
         if (i + 1 < len && data[i + 1] == '"') {
-          // Escaped quote
           field += '"';
           i += 2;
         } else {
-          // End of quoted field
           inQuotes = false;
           i++;
         }
@@ -53,7 +64,7 @@ CsvRow CsvParser::parseLine(const char* data, size_t len) {
       if (c == '"' && field.empty()) {
         inQuotes = true;
         i++;
-      } else if (c == ',') {
+      } else if (c == delim) {
         row.fields.push_back(field);
         field.clear();
         i++;
@@ -70,11 +81,11 @@ CsvRow CsvParser::parseLine(const char* data, size_t len) {
   return row;
 }
 
-std::string CsvParser::serializeLine(const CsvRow& row) {
+std::string CsvParser::serializeLine(const CsvRow& row, char delim) {
   std::string line;
   for (size_t i = 0; i < row.fields.size(); i++) {
-    if (i > 0) line += ',';
-    line += quoteField(row.fields[i]);
+    if (i > 0) line += delim;
+    line += quoteField(row.fields[i], delim);
   }
   return line;
 }
@@ -94,7 +105,6 @@ bool CsvParser::parseFile(const std::string& path, std::vector<CsvRow>& rows) {
     return false;
   }
 
-  // Read entire file into memory (CSVs for flashcards should be small)
   auto* buf = static_cast<char*>(malloc(fileSize + 1));
   if (!buf) {
     LOG_ERR("CSV", "Failed to allocate %zu bytes", fileSize);
@@ -106,36 +116,28 @@ bool CsvParser::parseFile(const std::string& path, std::vector<CsvRow>& rows) {
   file.close();
   buf[bytesRead] = '\0';
 
-  // Parse line by line
+  const char delim = sniffDelimiter(buf, bytesRead);
+
   size_t pos = 0;
   while (pos < bytesRead) {
-    // Skip empty lines
-    if (buf[pos] == '\r' || buf[pos] == '\n') {
-      pos++;
-      continue;
-    }
+    if (buf[pos] == '\r' || buf[pos] == '\n') { pos++; continue; }
 
-    // Find end of this logical line (respecting quoted fields)
     size_t lineStart = pos;
     bool inQuotes = false;
     while (pos < bytesRead) {
-      if (buf[pos] == '"') {
-        inQuotes = !inQuotes;
-      } else if (!inQuotes && (buf[pos] == '\n')) {
-        break;
-      }
+      if (buf[pos] == '"') inQuotes = !inQuotes;
+      else if (!inQuotes && buf[pos] == '\n') break;
       pos++;
     }
 
     size_t lineLen = pos - lineStart;
-    // Strip trailing CR
     if (lineLen > 0 && buf[lineStart + lineLen - 1] == '\r') lineLen--;
 
     if (lineLen > 0) {
-      rows.push_back(parseLine(buf + lineStart, lineLen));
+      rows.push_back(parseLine(buf + lineStart, lineLen, delim));
     }
 
-    if (pos < bytesRead) pos++;  // skip the \n
+    if (pos < bytesRead) pos++;
   }
 
   free(buf);
@@ -143,8 +145,7 @@ bool CsvParser::parseFile(const std::string& path, std::vector<CsvRow>& rows) {
   return !rows.empty();
 }
 
-bool CsvParser::writeFile(const std::string& path, const std::vector<CsvRow>& rows) {
-  // Write to temp file first, then replace
+bool CsvParser::writeFile(const std::string& path, const std::vector<CsvRow>& rows, char delim) {
   std::string tmpPath = path + ".tmp";
 
   FsFile file;
@@ -154,16 +155,14 @@ bool CsvParser::writeFile(const std::string& path, const std::vector<CsvRow>& ro
   }
 
   for (const auto& row : rows) {
-    std::string line = serializeLine(row) + "\n";
+    std::string line = serializeLine(row, delim) + "\n";
     file.write(reinterpret_cast<const uint8_t*>(line.c_str()), line.size());
   }
   file.flush();
   file.close();
 
-  // Remove original and rename tmp
   Storage.remove(path.c_str());
 
-  // SdFat rename: open tmp and rename it
   FsFile tmpFile = Storage.open(tmpPath.c_str(), O_RDWR);
   if (!tmpFile) {
     LOG_ERR("CSV", "Failed to reopen tmp file for rename");
