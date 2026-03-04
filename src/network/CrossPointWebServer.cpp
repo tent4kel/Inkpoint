@@ -1219,7 +1219,7 @@ void CrossPointWebServer::handleDeckList() const {
     if (info.isDirectory) return;
     String lowerName = info.name;
     lowerName.toLowerCase();
-    if (!lowerName.endsWith(".csv")) return;
+    if (!lowerName.endsWith(".csv") && !lowerName.endsWith(".tsv")) return;
 
     String title = info.name.substring(0, info.name.length() - 4);
     String path = String("/anki/") + info.name;
@@ -1261,8 +1261,8 @@ void CrossPointWebServer::handleGetDeck() const {
 
   String lowerPath = path;
   lowerPath.toLowerCase();
-  if (!lowerPath.endsWith(".csv")) {
-    server->send(400, "text/plain", "Only .csv files are supported");
+  if (!lowerPath.endsWith(".csv") && !lowerPath.endsWith(".tsv")) {
+    server->send(400, "text/plain", "Only .csv and .tsv files are supported");
     return;
   }
 
@@ -1308,8 +1308,8 @@ void CrossPointWebServer::handlePostDeck() const {
 
   String lowerPath = path;
   lowerPath.toLowerCase();
-  if (!lowerPath.endsWith(".csv")) {
-    server->send(400, "text/plain", "Only .csv files are supported");
+  if (!lowerPath.endsWith(".csv") && !lowerPath.endsWith(".tsv")) {
+    server->send(400, "text/plain", "Only .csv and .tsv files are supported");
     return;
   }
 
@@ -1383,8 +1383,9 @@ void CrossPointWebServer::handleRenameDeck() const {
 
   String lFrom = fromPath; lFrom.toLowerCase();
   String lTo   = toPath;   lTo.toLowerCase();
-  if (!lFrom.endsWith(".csv") || !lTo.endsWith(".csv")) {
-    server->send(400, "text/plain", "Only .csv files are supported");
+  if ((!lFrom.endsWith(".csv") && !lFrom.endsWith(".tsv")) ||
+      (!lTo.endsWith(".csv") && !lTo.endsWith(".tsv"))) {
+    server->send(400, "text/plain", "Only .csv and .tsv files are supported");
     return;
   }
   if (!lFrom.startsWith("/anki/") || !lTo.startsWith("/anki/")) {
