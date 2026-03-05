@@ -985,7 +985,7 @@
   });
 
   // ── SPA history ───────────────────────────────────────────────────────────
-  history.replaceState({view: 'picker'}, '');
+  history.replaceState({view: 'picker'}, '', location.href);
 
   window.addEventListener('popstate', function(e) {
     var state = e.state || {view: 'picker'};
@@ -994,7 +994,7 @@
       return;
     }
     if (isDirty) {
-      history.pushState({view: 'list', path: currentPath}, '');
+      history.pushState({view: 'list', path: currentPath}, '', '#' + encodeURIComponent(_nameFromPath(currentPath)));
       showDirtyDialog(function(action) {
         if (action === 'save') {
           saveCards(function() { history.back(); });
@@ -1108,6 +1108,7 @@
     isDirty = false;
     currentPath = null; searchQuery = '';
     document.getElementById('search-input').value = '';
+    history.replaceState({view:'picker'}, '', location.pathname + location.search);
     showView('view-picker');
     loadDeckList();
   }
@@ -1297,7 +1298,7 @@
     document.getElementById('list-empty').hidden = true;
     document.getElementById('no-results').hidden = true;
     showView('view-list');
-    if(pushHistory !== false) history.pushState({view:'list', path:path}, '');
+    if(pushHistory !== false) history.pushState({view:'list', path:path}, '', '#' + encodeURIComponent(_nameFromPath(path)));
     api.readDeck(path)
       .then(function(text){
         var p=parseCSV(text, currentDelim);
@@ -1558,8 +1559,25 @@
       M + 'S \u00b7 save &nbsp;&nbsp; ' +
       M + 'D \u00b7 dup &nbsp;&nbsp; ' +
       M + RET + ' \u00b7 new card &nbsp;&nbsp; ';
+
+    // Deep-link: open deck named in the URL hash on load
+    var hash = window.location.hash.slice(1);
+    if (hash) {
+      var name = decodeURIComponent(hash);
+      var path = /\.(csv|tsv)$/i.test(name) ? '/anki/' + name : '/anki/' + name + '.csv';
+      // Try exact name first, then .tsv fallback
+      api.readDeck(path)
+        .then(function() { openDeck(path, false); })
+        .catch(function() {
+          var alt = path.replace(/\.csv$/i, '.tsv');
+          api.readDeck(alt)
+            .then(function() { openDeck(alt, false); })
+            .catch(function() { loadDeckList(); });
+        });
+    } else {
+      loadDeckList();
+    }
   })();
-  loadDeckList();
 </script>
 </body>
 </html>
