@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lexicala Flashcard Maker</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      margin: 0;
+    }
+
+    /* ── Views ────────────────────────────────────────────────────────── */
+    .view {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 20px;
+      min-height: 100%;
+    }
+
+    h1 {
+      font-size: 2em;
+      font-weight: 700;
+      line-height: 1.2;
+      color: #2c3e50;
+      text-align: center;
+      margin: 0 0 4px;
+    }
+    @media (hover: hover) {
+      h1 { margin-top: 24px; }
+    }
+    .subtitle {
+      text-align: center;
+      color: #95a5a6;
+      font-size: 0.9em;
+      margin: 0 0 24px;
+    }
+
+    /* ── Setup form ────────────────────────────────────────────────────── */
+    .setup-card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      margin-bottom: 12px;
+    }
+    .field-group {
+      margin-bottom: 18px;
+    }
+    .field-group:last-child { margin-bottom: 0; }
+    .field-label {
+      display: block;
+      font-size: 0.82em;
+      font-weight: 600;
+      color: #7f8c8d;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .field-input, .field-select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      font-size: 16px;
+      font-family: inherit;
+      color: #2c3e50;
+      background: white;
+    }
+    .field-input:focus, .field-select:focus {
+      outline: none;
+      border-color: #3498db;
+      box-shadow: 0 0 0 3px rgba(52,152,219,0.15);
+    }
+    .field-row {
+      display: flex;
+      gap: 12px;
+    }
+    .field-row .field-group { flex: 1; }
+
+    /* ── Buttons ───────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-block;
+      padding: 11px 20px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 0.92em;
+      font-weight: 600;
+      font-family: inherit;
+      color: white;
+      transition: opacity 0.15s;
+    }
+    .btn:active { opacity: 0.8; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary  { background: #3498db; }
+    .btn-primary:hover:not(:disabled)  { background: #2980b9; }
+    .btn-success  { background: #27ae60; }
+    .btn-success:hover:not(:disabled)  { background: #219a52; }
+    .btn-neutral  { background: #7f8c8d; color: white; }
+    .btn-neutral:hover:not(:disabled)  { background: #6c7a7d; }
+    .btn-danger   { background: #e74c3c; }
+    .btn-danger:hover:not(:disabled)   { background: #c0392b; }
+    .btn-full { width: 100%; display: block; text-align: center; margin-top: 8px; }
+
+    /* ── Maker layout ──────────────────────────────────────────────────── */
+    #view-maker {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .maker-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .maker-title {
+      font-size: 1.4em;
+      font-weight: 700;
+      color: #2c3e50;
+    }
+    .maker-meta {
+      font-size: 0.82em;
+      color: #95a5a6;
+    }
+    .maker-meta a {
+      color: #7787cb;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .maker-meta a:hover { text-decoration: underline; }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 580px) {
+      .card-grid { grid-template-columns: 1fr; }
+    }
+
+    .card-pane {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      overflow: hidden;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+    }
+    .pane-label {
+      font-size: 0.72em;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #bbb;
+      padding: 10px 14px 0;
+    }
+    .pane-body {
+      flex: 1;
+      padding: 8px 14px 14px;
+    }
+
+    /* ── Card textareas ────────────────────────────────────────────────── */
+    .card-textarea {
+      width: 100%;
+      min-height: 120px;
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: inherit;
+      font-size: 1em;
+      line-height: 1.55;
+      color: #2c3e50;
+      background: transparent;
+      padding: 0;
+    }
+    .card-textarea::placeholder { color: #ccc; }
+    .card-textarea:disabled { opacity: 0.45; }
+
+    /* ── Pane status line ──────────────────────────────────────────────── */
+    .pane-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8em;
+      color: #aaa;
+      min-height: 18px;
+      margin-top: 4px;
+    }
+    .pane-status.error { color: #e74c3c; }
+
+    /* ── Action row ────────────────────────────────────────────────────── */
+    .action-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .action-row .btn { flex: 1; min-width: 100px; text-align: center; }
+
+    /* ── Toast ─────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #27ae60;
+      color: white;
+      padding: 10px 24px;
+      border-radius: 100px;
+      font-size: 0.9em;
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      transition: transform 0.25s ease;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 500;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.error { background: #e74c3c; }
+
+    /* ── Loader spinner ────────────────────────────────────────────────── */
+    .loader {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid #aaa;
+      border-bottom-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Footer ────────────────────────────────────────────────────────── */
+    .page-footer {
+      text-align: center;
+      color: #ccc;
+      font-size: 0.75em;
+      letter-spacing: 0.03em;
+      padding: 28px 0 40px;
+      line-height: 2;
+      user-select: none;
+    }
+    .page-footer a { color: #7787cb; text-decoration: none; }
+    .page-footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<!-- ── Setup view ─────────────────────────────────────────────────────── -->
+<div id="view-setup" class="view">
+  <h1>Flashcard Maker</h1>
+  <p class="subtitle">Lexicala dictionary &rarr; Anki-compatible decks</p>
+
+  <div class="setup-card">
+    <div class="field-group">
+      <label class="field-label" for="f-key">Lexicala API Key (RapidAPI)</label>
+      <input id="f-key" class="field-input" type="password"
+             placeholder="Paste your X-RapidAPI-Key here" autocomplete="off" />
+    </div>
+
+    <div class="field-row">
+      <div class="field-group">
+        <label class="field-label" for="f-src">Learning language</label>
+        <select id="f-src" class="field-select">
+          <option value="de">German (de)</option>
+          <option value="es">Spanish (es)</option>
+          <option value="fr">French (fr)</option>
+          <option value="it">Italian (it)</option>
+          <option value="nl">Dutch (nl)</option>
+          <option value="pt">Portuguese (pt)</option>
+          <option value="ru">Russian (ru)</option>
+          <option value="en">English (en)</option>
+          <option value="nb">Norwegian (nb)</option>
+          <option value="da">Danish (da)</option>
+          <option value="sv">Swedish (sv)</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="f-tgt">Your language</label>
+        <select id="f-tgt" class="field-select">
+          <option value="en">English (en)</option>
+          <option value="de">German (de)</option>
+          <option value="fr">French (fr)</option>
+          <option value="es">Spanish (es)</option>
+          <option value="it">Italian (it)</option>
+          <option value="pt">Portuguese (pt)</option>
+          <option value="nl">Dutch (nl)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field-group" style="margin-top:18px;">
+      <label class="field-label" for="f-deck">Save cards to deck</label>
+      <select id="f-deck" class="field-select">
+        <option value="">Loading decks…</option>
+      </select>
+    </div>
+  </div>
+
+  <button class="btn btn-primary btn-full" id="start-btn">Start making cards</button>
+
+  <div class="page-footer">
+    <div>Looks up words via <a href="https://rapidapi.com/dictionaries-info-dictionaries-info-default/api/lexicala1" target="_blank" rel="noopener">Lexicala on RapidAPI</a></div>
+    <div>Cards saved to your browser via OPFS &nbsp;&middot;&nbsp; open in <a href="index.html">Flashcard Editor</a></div>
+    <div><a href="https://github.com/tent4kel/Inkpoint" target="_blank" rel="noopener">tent4kel/Inkpoint on GitHub</a></div>
+  </div>
+</div>
+
+<!-- ── Maker view ─────────────────────────────────────────────────────── -->
+<div id="view-maker" style="display:none">
+  <div class="maker-header">
+    <div class="maker-title">Flashcard Maker</div>
+    <div class="maker-meta">
+      Deck: <a id="deck-link" href="#">…</a>
+      &nbsp;&middot;&nbsp;
+      <a href="#" id="settings-link">Settings</a>
+    </div>
+  </div>
+
+  <div class="card-grid">
+    <div class="card-pane">
+      <div class="pane-label" id="front-label">Front</div>
+      <div class="pane-body">
+        <textarea id="word-input" class="card-textarea" placeholder="Type or paste a word…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"></textarea>
+        <div class="pane-status" id="front-status"></div>
+      </div>
+    </div>
+    <div class="card-pane">
+      <div class="pane-label" id="back-label">Back</div>
+      <div class="pane-body">
+        <textarea id="back-input" class="card-textarea" placeholder="Type or paste a word…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"></textarea>
+        <div class="pane-status" id="back-status"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="action-row">
+    <button class="btn btn-neutral" id="lookup-btn">Look up</button>
+    <button class="btn btn-neutral" id="skip-btn">Skip</button>
+    <button class="btn btn-success" id="save-btn" disabled>Save card</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+  // ─────────────────────────────────────────────────────────────────────────────
+  // CARD TEMPLATES — edit these to change how cards are formatted
+  // d: { word, pos, definition, translation, example_src, example_tgt }
+  // Missing fields are replaced with empty string.
+  // ─────────────────────────────────────────────────────────────────────────────
+  var CARD_FRONT_TEMPLATE = function(d) {
+    var parts = ['**' + d.word + '**'];
+    if (d.pos) parts.push('*' + d.pos + '*');
+    if (d.example_src) parts.push(d.example_src);
+    return parts.join('\n');
+  };
+
+  var CARD_BACK_TEMPLATE = function(d) {
+    var parts = ['**' + (d.translation || d.word) + '**'];
+    if (d.pos) parts.push('*' + d.pos + '*');
+    if (d.example_tgt) parts.push(d.example_tgt);
+    else if (d.definition) parts.push(d.definition);
+    return parts.join('\n');
+  };
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // ── OPFS Backend ─────────────────────────────────────────────────────────────
+  class OPFSBackend {
+    async _ankiDir() {
+      var root = await navigator.storage.getDirectory();
+      return root.getDirectoryHandle('anki', { create: true });
+    }
+    async listDecks() {
+      var dir = await this._ankiDir();
+      var decks = [];
+      for await (var [name, handle] of dir.entries()) {
+        if (handle.kind !== 'file') continue;
+        if (!/\.(csv|tsv)$/i.test(name)) continue;
+        var title = name.replace(/\.(csv|tsv)$/i, '');
+        decks.push({ name: name, title: title, path: '/anki/' + name });
+      }
+      decks.sort(function(a, b) { return a.title.localeCompare(b.title); });
+      return decks;
+    }
+    async readDeck(path) {
+      var name = _nameFromPath(path);
+      var dir  = await this._ankiDir();
+      var fh   = await dir.getFileHandle(name);
+      var file = await fh.getFile();
+      return file.text();
+    }
+    async writeDeck(path, content) {
+      var name  = _nameFromPath(path);
+      var dir   = await this._ankiDir();
+      var fh    = await dir.getFileHandle(name, { create: true });
+      var w     = await fh.createWritable();
+      await w.write(new TextEncoder().encode(content));
+      await w.close();
+    }
+  }
+
+  function _nameFromPath(path) { return path.replace(/^.*\//, ''); }
+
+  var api = new OPFSBackend();
+
+  // ── CSV helpers ──────────────────────────────────────────────────────────────
+  var CSV_HEADER = 'Front,Back,Repetitions,EasinessFactor,Interval,NextReviewSession\r\n';
+
+  function csvField(s) {
+    s = String(s);
+    return /[,"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function formatCSVRow(cols) {
+    return cols.map(csvField).join(',');
+  }
+
+  // ── Toast ────────────────────────────────────────────────────────────────────
+  var _toastTimer = null;
+  var toastEl = document.getElementById('toast');
+  function showToast(msg, isError) {
+    toastEl.textContent = msg;
+    toastEl.className   = 'show' + (isError ? ' error' : '');
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function() { toastEl.className = ''; }, 2200);
+  }
+
+  // ── Language names ───────────────────────────────────────────────────────────
+  var LANG_NAMES = {
+    de:'German', es:'Spanish', fr:'French', it:'Italian', nl:'Dutch',
+    pt:'Portuguese', ru:'Russian', en:'English', nb:'Norwegian',
+    da:'Danish', sv:'Swedish'
+  };
+
+  // ── State ────────────────────────────────────────────────────────────────────
+  var lastFocused = 'front'; // tracks which pane to look up on button click
+
+  // ── Setup ────────────────────────────────────────────────────────────────────
+  var setupEl = document.getElementById('view-setup');
+  var makerEl = document.getElementById('view-maker');
+
+  async function loadSetup() {
+    document.getElementById('f-key').value = localStorage.getItem('lex_api_key') || '';
+    setSelected('f-src', localStorage.getItem('lex_src') || 'de');
+    setSelected('f-tgt', localStorage.getItem('lex_tgt') || 'en');
+
+    var deckSel = document.getElementById('f-deck');
+    deckSel.innerHTML = '<option value="__new__">+ New deck…</option>';
+    try {
+      var decks = await api.listDecks();
+      decks.forEach(function(d) {
+        var opt = document.createElement('option');
+        opt.value       = d.path;
+        opt.textContent = d.title;
+        deckSel.appendChild(opt);
+      });
+    } catch(e) {}
+    var savedDeck = localStorage.getItem('lex_deck');
+    if (savedDeck) setSelected('f-deck', savedDeck);
+  }
+
+  function setSelected(id, val) {
+    var sel = document.getElementById(id);
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === val) { sel.selectedIndex = i; return; }
+    }
+  }
+
+  document.getElementById('start-btn').addEventListener('click', async function() {
+    var key  = document.getElementById('f-key').value.trim();
+    var src  = document.getElementById('f-src').value;
+    var tgt  = document.getElementById('f-tgt').value;
+    var deck = document.getElementById('f-deck').value;
+
+    if (!key) { showToast('Please enter your API key', true); return; }
+
+    if (deck === '__new__') {
+      var name = prompt('New deck name:');
+      if (!name || !name.trim()) return;
+      name = name.trim().replace(/[^\w\s\-]/g, '');
+      if (!name) { showToast('Invalid deck name', true); return; }
+      deck = '/anki/' + name + '.csv';
+    }
+
+    localStorage.setItem('lex_api_key', key);
+    localStorage.setItem('lex_src', src);
+    localStorage.setItem('lex_tgt', tgt);
+    localStorage.setItem('lex_deck', deck);
+
+    startMaker(key, src, tgt, deck);
+  });
+
+  function startMaker(key, src, tgt, deck) {
+    setupEl.style.display = 'none';
+    makerEl.style.display = '';
+
+    // Language labels
+    document.getElementById('front-label').textContent = LANG_NAMES[src] || src;
+    document.getElementById('back-label').textContent  = LANG_NAMES[tgt] || tgt;
+
+    var deckName = _nameFromPath(deck).replace(/\.(csv|tsv)$/i, '');
+    document.getElementById('deck-link').textContent = deckName;
+    document.getElementById('deck-link').onclick = function(e) {
+      e.preventDefault();
+      window.open('index.html#' + encodeURIComponent(_nameFromPath(deck)), '_blank');
+    };
+
+    document.getElementById('settings-link').onclick = function(e) {
+      e.preventDefault();
+      setupEl.style.display = '';
+      makerEl.style.display = 'none';
+      loadSetup();
+    };
+
+    resetCard();
+    setupMakerActions(key, src, tgt, deck);
+  }
+
+  // ── Maker logic ──────────────────────────────────────────────────────────────
+  var wordInput = document.getElementById('word-input');
+  var backInput = document.getElementById('back-input');
+  var skipBtn   = document.getElementById('skip-btn');
+  var saveBtn   = document.getElementById('save-btn');
+
+  wordInput.addEventListener('focus', function() { lastFocused = 'front'; });
+  backInput.addEventListener('focus', function() { lastFocused = 'back'; });
+
+  function setStatus(side, state, msg) {
+    // side: 'front' | 'back'
+    var el = document.getElementById(side + '-status');
+    if (state === 'loading') {
+      el.className = 'pane-status';
+      el.innerHTML = '<span class="loader"></span> Looking up…';
+    } else if (state === 'error') {
+      el.className = 'pane-status error';
+      el.textContent = msg || 'Not found';
+    } else {
+      el.className = 'pane-status';
+      el.textContent = msg || '';
+    }
+  }
+
+  function resetCard() {
+    wordInput.value  = '';
+    backInput.value  = '';
+    wordInput.disabled = false;
+    backInput.disabled = false;
+    setStatus('front', 'idle');
+    setStatus('back',  'idle');
+    saveBtn.disabled = true;
+    wordInput.focus();
+  }
+
+  function setupMakerActions(apiKey, src, tgt, deck) {
+    // Lookup only on Enter or button — never on input (saves API quota)
+    wordInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        var word = wordInput.value.trim();
+        if (word) doLookup(word, apiKey, src, tgt, 'ltr');
+      }
+    });
+    backInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        var word = backInput.value.trim();
+        if (word) doLookup(word, apiKey, tgt, src, 'rtl');
+      }
+    });
+
+    document.getElementById('lookup-btn').onclick = function() {
+      var wordL = wordInput.value.trim();
+      var wordR = backInput.value.trim();
+      // Lookup whichever pane was last focused
+      if (lastFocused === 'back' && wordR) doLookup(wordR, apiKey, tgt, src, 'rtl');
+      else if (wordL) doLookup(wordL, apiKey, src, tgt, 'ltr');
+    };
+
+    skipBtn.onclick = function() { resetCard(); };
+
+    saveBtn.onclick = function() {
+      var front = wordInput.value.trim();
+      var back  = backInput.value.trim();
+      if (!front || !back) return;
+      saveCard(deck, front, front, back);
+    };
+  }
+
+  // direction: 'ltr' → lookup in lookupLang, fill OTHER pane
+  //            'rtl' → same but reversed
+  async function doLookup(word, apiKey, lookupLang, outputLang, direction) {
+    var inputEl  = direction === 'ltr' ? wordInput : backInput;
+    var outputEl = direction === 'ltr' ? backInput  : wordInput;
+    var outSide  = direction === 'ltr' ? 'back'     : 'front';
+
+    setStatus(outSide, 'loading');
+    outputEl.disabled = true;
+    saveBtn.disabled  = true;
+
+    try {
+      // 1. Lexicala lookup
+      var lexUrl = 'https://lexicala1.p.rapidapi.com/search?text=' + encodeURIComponent(word) + '&language=' + lookupLang + '&source=global&morph=true&analyzed=true';
+      console.log('[lex] GET', lexUrl);
+      var lexRes = await fetch(lexUrl,
+        { headers: { 'X-RapidAPI-Key': apiKey, 'X-RapidAPI-Host': 'lexicala1.p.rapidapi.com', 'Accept': 'application/json' } }
+      );
+      console.log('[lex] status', lexRes.status);
+      if (!lexRes.ok) {
+        var errBody = await lexRes.text().catch(function(){return '';});
+        console.log('[lex] error body', errBody);
+        if (lexRes.status === 403 || lexRes.status === 401) throw new Error('Invalid API key');
+        throw new Error('Lexicala error ' + lexRes.status);
+      }
+      var lexData = await lexRes.json();
+      console.log('[lex] response', JSON.stringify(lexData).slice(0, 800));
+      if (!lexData.results || !lexData.results.length) {
+        setStatus(outSide, 'error', 'Word not found in ' + (LANG_NAMES[lookupLang] || lookupLang));
+        outputEl.disabled = false;
+        return;
+      }
+
+      var searchEntry = lexData.results[0];
+      console.log('[lex] entry[0]', JSON.stringify(searchEntry).slice(0, 400));
+
+      // Fetch full entry only when search result has no examples
+      var searchSense0 = (searchEntry.senses || [])[0] || {};
+      var fullEntry = searchEntry;
+      if (searchEntry.id && !(searchSense0.examples && searchSense0.examples.length)) {
+        try {
+          var entryRes = await fetch(
+            'https://lexicala1.p.rapidapi.com/entries/' + encodeURIComponent(searchEntry.id),
+            { headers: { 'X-RapidAPI-Key': apiKey, 'X-RapidAPI-Host': 'lexicala1.p.rapidapi.com', 'Accept': 'application/json' } }
+          );
+          console.log('[lex] entry fetch status', entryRes.status);
+          if (entryRes.ok) fullEntry = await entryRes.json();
+          console.log('[lex] full entry', JSON.stringify(fullEntry).slice(0, 600));
+        } catch(e) {
+          console.log('[lex] full entry fetch failed, using search result', e);
+        }
+      } else {
+        console.log('[lex] search result has examples, skipping entry fetch');
+      }
+
+      var hw          = fullEntry.headword || searchEntry.headword;
+      var pos         = (hw && hw.pos) ? hw.pos : '';
+      var sense       = (fullEntry.senses || searchEntry.senses || [])[0] || {};
+      var definition  = sense.definition || '';
+      var example_src = (sense.examples && sense.examples[0]) ? sense.examples[0].text : '';
+      console.log('[lex] parsed pos=' + pos + ' def=' + definition + ' ex=' + example_src);
+
+      // 2. Parallel translation calls
+      var [translation, example_tgt] = await Promise.all([
+        fetchTranslation(word,        lookupLang, outputLang),
+        example_src ? fetchTranslation(example_src, lookupLang, outputLang) : Promise.resolve('')
+      ]);
+      console.log('[trans] word=' + translation + ' example=' + example_tgt);
+
+      var d = { word: word, pos: pos, definition: definition,
+                translation: translation, example_src: example_src, example_tgt: example_tgt };
+
+      // In RTL mode the user typed in the output language, so swap word↔translation
+      // and example_src↔example_tgt so the templates see the right values.
+      var fillData = direction === 'ltr' ? d : {
+        word:        d.translation || d.word,
+        pos:         d.pos,
+        definition:  d.definition,
+        translation: d.word,
+        example_src: d.example_tgt,
+        example_tgt: d.example_src,
+      };
+      var filled = direction === 'ltr' ? CARD_BACK_TEMPLATE(fillData) : CARD_FRONT_TEMPLATE(fillData);
+      outputEl.value    = filled;
+      outputEl.disabled = false;
+      setStatus(outSide, 'idle', pos ? pos : '');
+      saveBtn.disabled = !(wordInput.value.trim() && backInput.value.trim());
+
+    } catch(e) {
+      console.log('[lex] catch', e);
+      setStatus(outSide, 'error', e.message || 'Lookup failed');
+      outputEl.disabled = false;
+    }
+  }
+
+  async function fetchTranslation(text, src, tgt) {
+    try {
+      var url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=' + src + '|' + tgt;
+      console.log('[trans] GET', url);
+      var res = await fetch(url);
+      console.log('[trans] status', res.status);
+      if (!res.ok) return '';
+      var data = await res.json();
+      console.log('[trans] result', JSON.stringify(data.responseData));
+      return (data.responseData && data.responseData.translatedText) ? data.responseData.translatedText : '';
+    } catch(e) {
+      console.log('[trans] error', e);
+      return '';
+    }
+  }
+
+  async function saveCard(deckPath, label, front, back) {
+    saveBtn.disabled = true;
+    try {
+      var existing = '';
+      try { existing = await api.readDeck(deckPath); } catch(e) {}
+      if (!existing.trim()) existing = CSV_HEADER;
+      var row     = formatCSVRow([front, back, '0', '2500', '0', '0']);
+      var updated = existing.trimEnd() + '\r\n' + row + '\r\n';
+      await api.writeDeck(deckPath, updated);
+      showToast('Saved: ' + label);
+      resetCard();
+    } catch(e) {
+      showToast('Save failed: ' + (e.message || e), true);
+      saveBtn.disabled = false;
+    }
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────────────
+  (async function() {
+    await loadSetup();
+
+    var key  = localStorage.getItem('lex_api_key');
+    var src  = localStorage.getItem('lex_src');
+    var tgt  = localStorage.getItem('lex_tgt');
+    var deck = localStorage.getItem('lex_deck');
+
+    if (key && src && tgt && deck) {
+      startMaker(key, src, tgt, deck);
+    }
+  })();
+</script>
+</body>
+</html>
