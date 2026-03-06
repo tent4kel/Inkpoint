@@ -613,7 +613,8 @@
   // ── Minimal Markdown renderer ─────────────────────────────────────────────
   function md(src, highlight) {
     if (!src || !src.trim()) return '<span class="ph">&#8212;</span>';
-    var s = src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    var s = src.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+    s = s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     var codes = [];
     s = s.replace(/`([^`\n]+)`/g, function(_,c){ codes.push(c); return '\x01'+(codes.length-1)+'\x01'; });
     s = s.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>');
