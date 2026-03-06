@@ -30,9 +30,6 @@ static bool s_everSynced = false;
 // to have the boot sequence navigate straight back to Instapaper.
 extern RTC_DATA_ATTR bool rtcGoToInstapaper;
 
-void InstapaperActivity::setPendingOpenPath(const std::string& path) {
-  s_pendingOpenPath = path;
-}
 
 namespace {
 // Remove the HTML file, its sidecar .meta, and the render cache directory.
