@@ -112,4 +112,5 @@ class CrossPointWebServer {
   void handleGetDeck() const;
   void handlePostDeck() const;
   void handleRenameDeck() const;
+  void handleDeleteDeck() const;
 };
