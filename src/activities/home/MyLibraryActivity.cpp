@@ -93,7 +93,8 @@ void MyLibraryActivity::loadFiles() {
       if (StringUtils::checkFileExtension(filename, ".epub") || StringUtils::checkFileExtension(filename, ".xtch") ||
           StringUtils::checkFileExtension(filename, ".xtc") || StringUtils::checkFileExtension(filename, ".txt") ||
           StringUtils::checkFileExtension(filename, ".md") || StringUtils::checkFileExtension(filename, ".bmp") ||
-          StringUtils::checkFileExtension(filename, ".markdown") || StringUtils::checkFileExtension(filename, ".csv")) {
+          StringUtils::checkFileExtension(filename, ".markdown") || StringUtils::checkFileExtension(filename, ".csv") ||
+          StringUtils::checkFileExtension(filename, ".html")) {
         files.emplace_back(filename);
       }
     }

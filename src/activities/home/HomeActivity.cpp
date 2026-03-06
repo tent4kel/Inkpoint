@@ -13,6 +13,7 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "InstapaperCredentialStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
@@ -28,6 +29,9 @@ int HomeActivity::getMenuItemCount() const {
     count++;
   }
   if (onAnkiExplorerOpen) {
+    count++;
+  }
+  if (hasInstapaper) {
     count++;
   }
   return count;
@@ -116,6 +120,7 @@ void HomeActivity::onEnter() {
 
   // Check if OPDS browser URL is configured
   hasOpdsUrl = strlen(SETTINGS.opdsServerUrl) > 0;
+  hasInstapaper = INSTAPAPER_STORE.hasCredentials();
 
   selectorIndex = 0;
 
@@ -196,6 +201,7 @@ void HomeActivity::loop() {
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
     const int ankiExplorerIdx = onAnkiExplorerOpen ? idx++ : -1;
+    const int instapaperIdx = hasInstapaper ? idx++ : -1;
     const int fileTransferIdx = idx++;
     const int settingsIdx = idx;
 
@@ -209,6 +215,8 @@ void HomeActivity::loop() {
       onOpdsBrowserOpen();
     } else if (menuSelectedIndex == ankiExplorerIdx) {
       if (onAnkiExplorerOpen) onAnkiExplorerOpen();
+    } else if (menuSelectedIndex == instapaperIdx) {
+      if (onInstapaperOpen) onInstapaperOpen();
     } else if (menuSelectedIndex == fileTransferIdx) {
       onFileTransferOpen();
     } else if (menuSelectedIndex == settingsIdx) {
@@ -232,11 +240,11 @@ void HomeActivity::render(Activity::RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   // Build menu items dynamically
-  int insertPos = 2;
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
                                         tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings};
 
+  int insertPos = 2;
   if (hasOpdsUrl) {
     menuItems.insert(menuItems.begin() + insertPos, tr(STR_OPDS_BROWSER));
     menuIcons.insert(menuIcons.begin() + insertPos, Library);
@@ -245,6 +253,11 @@ void HomeActivity::render(Activity::RenderLock&&) {
   if (onAnkiExplorerOpen) {
     menuItems.insert(menuItems.begin() + insertPos, "Flashcards");
     menuIcons.insert(menuIcons.begin() + insertPos, Flashcards);
+    insertPos++;
+  }
+  if (hasInstapaper) {
+    menuItems.insert(menuItems.begin() + insertPos, tr(STR_INSTAPAPER));
+    menuIcons.insert(menuIcons.begin() + insertPos, Newspaper);
     insertPos++;
   }
 

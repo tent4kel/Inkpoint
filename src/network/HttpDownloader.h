@@ -30,6 +30,19 @@ class HttpDownloader {
   static bool fetchUrl(const std::string& url, Stream& stream);
 
   /**
+   * POST to a URL and get the response body.
+   * @param url The URL to POST to
+   * @param body URL-encoded POST body
+   * @param authHeader Authorization header value (e.g. "OAuth ...")
+   * @param outContent The response content (output)
+   * @param maxBytes If > 0, stop reading after this many bytes (prevents OOM on large responses)
+   * @return true if request succeeded, false on error
+   */
+  static bool postUrl(const std::string& url, const std::string& body, const std::string& authHeader,
+                      std::string& outContent, size_t maxBytes = 0,
+                      ProgressCallback progress = nullptr);
+
+  /**
    * Download a file to the SD card.
    * @param url The URL to download
    * @param destPath The destination path on SD card
@@ -38,6 +51,21 @@ class HttpDownloader {
    */
   static DownloadError downloadToFile(const std::string& url, const std::string& destPath,
                                       ProgressCallback progress = nullptr);
+
+  /**
+   * POST to a URL and stream the response body directly to the SD card.
+   * No large RAM buffer — response is written in 1 KB chunks.
+   * @param url The URL to POST to
+   * @param body URL-encoded POST body
+   * @param authHeader Authorization header value (e.g. "OAuth ...")
+   * @param destPath The destination path on SD card
+   * @param progress Optional progress callback
+   * @return DownloadError indicating success or failure type
+   */
+  static DownloadError postUrlToFile(const std::string& url, const std::string& body,
+                                     const std::string& authHeader, const std::string& destPath,
+                                     ProgressCallback progress = nullptr,
+                                     std::function<bool()> abortCheck = nullptr);
 
  private:
   static constexpr size_t DOWNLOAD_CHUNK_SIZE = 1024;

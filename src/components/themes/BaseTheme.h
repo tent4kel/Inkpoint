@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "fontIds.h"
+
 class GfxRenderer;
 struct RecentBook;
 
@@ -64,7 +66,7 @@ struct ThemeMetrics {
   bool keyboardCenteredText;
 };
 
-enum UIIcon { Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, Flashcards };
+enum UIIcon { Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, Flashcards, Newspaper };
 
 // Default theme implementation (Classic Theme)
 // Additional themes can inherit from this and override methods as needed
@@ -140,4 +142,7 @@ class BaseTheme {
   virtual void drawHelpText(const GfxRenderer& renderer, Rect rect, const char* label) const;
   virtual void drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth) const;
   virtual void drawKeyboardKey(const GfxRenderer& renderer, Rect rect, const char* label, const bool isSelected) const;
+  [[nodiscard]] virtual int getListSubtitleFontId() const { return UI_10_FONT_ID; }
+  [[nodiscard]] virtual int getListTextInset() const { return 0; }        // extra horizontal padding inside selection box
+  [[nodiscard]] virtual int getListSubtitleYOffset() const { return 30; } // px from row top to subtitle baseline
 };
