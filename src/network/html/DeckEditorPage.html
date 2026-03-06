@@ -148,10 +148,19 @@
     /* ── Deck picker ──────────────────────────────────────────────── */
     h1 {
       color: #2c3e50;
-      border-bottom: 2px solid #3498db;
-      padding-bottom: 10px;
-      margin-bottom: 10px;
+      font-size: 2em;
+      font-weight: 700;
+      line-height: 1.2;
+      text-align: center;
+      margin: 0 0 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
+    @media (hover: hover) {
+      h1, #deck-title-large { margin-top: 24px; }
+    }
+    .deck-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
     .deck-item {
       padding: 12px 16px;
       background: white;
@@ -406,8 +415,8 @@
     #search-input::placeholder { color: #bbb; }
     #search-input:focus { outline: none; box-shadow: 0 2px 8px rgba(52,152,219,0.35); }
 
-    /* ── Deck picker edit button ──────────────────────────────────── */
-    .deck-edit-btn {
+    /* ── Deck picker edit/export/delete buttons ───────────────────── */
+    .deck-edit-btn, .deck-export-btn, .deck-del-btn {
       font-size: 1.05em;
       color: #ccc;
       cursor: pointer;
@@ -416,7 +425,60 @@
       flex-shrink: 0;
       line-height: 1;
     }
-    .deck-edit-btn:hover { color: #7f8c8d; background: #e8eaed; }
+    .deck-edit-btn:hover   { color: #7f8c8d; background: #e8eaed; }
+    .deck-export-btn:hover { color: #8e44ad; background: #f0e8f5; }
+    .deck-del-btn:hover    { color: #e74c3c; background: #fdf0f0; }
+
+    /* ── Delete confirm dialog ────────────────────────────────────── */
+    #del-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 400;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #del-overlay[hidden] { display: none; }
+    #del-dialog {
+      background: white;
+      border-radius: 16px;
+      padding: 24px 20px 20px;
+      max-width: 300px;
+      width: 90%;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    }
+    #del-dialog h3 { margin: 0 0 6px; font-size: 1.1em; color: #2c3e50; }
+    #del-dialog p  { margin: 0 0 18px; font-size: 0.9em; color: #7f8c8d; }
+    .del-btns { display: flex; gap: 8px; }
+    .del-btns button {
+      flex: 1;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.88em;
+      font-weight: 500;
+      font-family: inherit;
+    }
+    .del-cancel  { background: #ecf0f1; color: #555; }
+    .del-confirm { background: #e74c3c; color: white; }
+
+    /* ── Picker action buttons ────────────────────────────────────── */
+    .picker-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      font-size: 0.9em;
+      font-family: inherit;
+      font-weight: 500;
+      color: white;
+    }
+    .picker-btn-new    { background: #27ae60; }
+    .picker-btn-new:hover    { background: #219a52; }
+    .picker-btn-import { background: #e67e22; }
+    .picker-btn-import:hover { background: #ca6f1e; }
 
     /* ── Hotkey hints ─────────────────────────────────────────────── */
     #hotkey-hints {
@@ -520,6 +582,21 @@
   </div>
 </div>
 
+<!-- ── Delete confirm dialog ──────────────────────────────────────────── -->
+<div id="del-overlay" hidden>
+  <div id="del-dialog">
+    <h3 id="del-title">Delete deck?</h3>
+    <p>This cannot be undone.</p>
+    <div class="del-btns">
+      <button class="del-cancel"  id="del-cancel">Cancel</button>
+      <button class="del-confirm" id="del-confirm">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file input for import -->
+<input type="file" id="import-input" multiple accept=".csv,.tsv" style="display:none" />
+
 <!-- ── View: Deck Picker ─────────────────────────────────────────────── -->
 <div id="view-picker">
   <h1>Anki Deck Editor</h1>
@@ -529,8 +606,9 @@
     <a href="/settings">Settings</a>
   </div>
   <div id="picker-banner" class="message"></div>
-  <div style="margin:12px 0;">
-    <button onclick="newDeck()" style="padding:8px 16px;background:#27ae60;color:white;border:none;border-radius:16px;cursor:pointer;font-size:0.9em;font-family:inherit;">+ New Deck</button>
+  <div style="margin:12px 0; display:flex; flex-wrap:wrap; gap:8px;">
+    <button onclick="newDeck()" class="picker-btn picker-btn-new">+ New Deck</button>
+    <button onclick="document.getElementById('import-input').click()" class="picker-btn picker-btn-import">&#8593; Import CSV/TSV</button>
   </div>
   <div id="deck-list"><span class="loader"></span> Loading&hellip;</div>
 </div>
@@ -989,12 +1067,18 @@
         for(var i=0;i<decks.length;i++)
           html+='<div class="deck-item" data-i="'+i+'">'+
             '<span class="deck-title">'+esc(decks[i].title)+'</span>'+
-            '<span class="deck-edit-btn" data-i="'+i+'" title="Rename">&#9998;</span></div>';
+            '<span class="deck-actions">'+
+              '<span class="deck-edit-btn"   data-i="'+i+'" title="Rename">&#9998;</span>'+
+              '<span class="deck-export-btn" data-i="'+i+'" title="Export/Download">&#8595;</span>'+
+              '<span class="deck-del-btn"    data-i="'+i+'" title="Delete">&times;</span>'+
+            '</span></div>';
         c.innerHTML=html;
         c.querySelectorAll('.deck-item').forEach(function(el){
           var idx=parseInt(el.dataset.i,10);
           el.addEventListener('click',function(e){
-            if(e.target.classList.contains('deck-edit-btn')) return;
+            if(e.target.classList.contains('deck-edit-btn'))   return;
+            if(e.target.classList.contains('deck-export-btn')) return;
+            if(e.target.classList.contains('deck-del-btn'))    return;
             openDeck(decks[idx].path);
           });
         });
@@ -1003,6 +1087,20 @@
           btn.addEventListener('click',function(e){
             e.stopPropagation();
             renameDeck(decks[idx].path, decks[idx].title);
+          });
+        });
+        c.querySelectorAll('.deck-export-btn').forEach(function(btn){
+          var idx=parseInt(btn.dataset.i,10);
+          btn.addEventListener('click',function(e){
+            e.stopPropagation();
+            exportDeck(decks[idx].path, decks[idx].name);
+          });
+        });
+        c.querySelectorAll('.deck-del-btn').forEach(function(btn){
+          var idx=parseInt(btn.dataset.i,10);
+          btn.addEventListener('click',function(e){
+            e.stopPropagation();
+            confirmDeleteDeck(decks[idx].path, decks[idx].title);
           });
         });
       })
@@ -1032,6 +1130,82 @@
         .then(function(r){if(!r.ok)return r.text().then(function(b){throw new Error(b);}); loadDeckList();})
         .catch(function(e){showBanner('picker-banner','Rename failed: '+e.message,true);});
     });
+  }
+
+  function exportDeck(path, filename) {
+    fetch('/api/deck?path='+encodeURIComponent(path))
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.blob(); })
+      .then(function(blob){
+        var url = URL.createObjectURL(blob);
+        var a   = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+      })
+      .catch(function(e){ showBanner('picker-banner','Export failed: '+e.message,true); });
+  }
+
+  // ── Delete deck with confirm ──────────────────────────────────────────────
+  var _delCb      = null;
+  var _delOverlay = document.getElementById('del-overlay');
+  var _delTitle   = document.getElementById('del-title');
+
+  function confirmDeleteDeck(path, title) {
+    _delTitle.textContent = 'Delete \u201c' + title + '\u201d?';
+    _delCb = function() {
+      fetch('/api/delete-deck?path='+encodeURIComponent(path), {method:'POST'})
+        .then(function(r){ if(!r.ok) return r.text().then(function(b){ throw new Error(b); }); loadDeckList(); })
+        .catch(function(e){ showBanner('picker-banner','Delete failed: '+e.message,true); });
+    };
+    _delOverlay.hidden = false;
+  }
+
+  document.getElementById('del-cancel').addEventListener('click', function() {
+    _delOverlay.hidden = true; _delCb = null;
+  });
+  document.getElementById('del-confirm').addEventListener('click', function() {
+    _delOverlay.hidden = true;
+    var cb = _delCb; _delCb = null;
+    if (cb) cb();
+  });
+  _delOverlay.addEventListener('click', function(e) {
+    if (e.target === _delOverlay) { _delOverlay.hidden = true; _delCb = null; }
+  });
+
+  // ── Import (file picker) ──────────────────────────────────────────────────
+  document.getElementById('import-input').addEventListener('change', function(e) {
+    var files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    var pending = files.length, errors = [];
+    files.forEach(function(file) {
+      var name = file.name;
+      if (!/\.(csv|tsv)$/i.test(name)) {
+        errors.push(name + ': not a CSV/TSV file');
+        if (--pending === 0) _importDone(errors);
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        fetch('/api/deck?path='+encodeURIComponent('/anki/'+name),{
+          method:'POST', headers:{'Content-Type':'text/plain'}, body:ev.target.result
+        })
+          .then(function(r){ if(!r.ok) return r.text().then(function(b){ throw new Error(b); }); if(--pending===0) _importDone(errors); })
+          .catch(function(er){ errors.push(name+': '+er.message); if(--pending===0) _importDone(errors); });
+      };
+      reader.onerror = function() { errors.push(name+': read error'); if(--pending===0) _importDone(errors); };
+      reader.readAsText(file, 'UTF-8');
+    });
+    this.value = '';  // reset so re-picking same file fires change again
+  });
+
+  function _importDone(errors) {
+    if (errors.length) {
+      showBanner('picker-banner', errors.join('; '), true);
+    } else {
+      showBanner('picker-banner', 'Import complete.', false);
+    }
+    loadDeckList();
   }
 
   // ── Card List ─────────────────────────────────────────────────────────────

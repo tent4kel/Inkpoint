@@ -159,10 +159,11 @@ void CrossPointWebServer::begin() {
 
   // Deck editor endpoints
   server->on("/deck-editor", HTTP_GET, [this] { handleDeckEditorPage(); });
-  server->on("/api/decks",       HTTP_GET,  [this] { handleDeckList(); });
-  server->on("/api/deck",        HTTP_GET,  [this] { handleGetDeck(); });
-  server->on("/api/deck",        HTTP_POST, [this] { handlePostDeck(); });
-  server->on("/api/rename-deck", HTTP_POST, [this] { handleRenameDeck(); });
+  server->on("/api/decks",        HTTP_GET,  [this] { handleDeckList(); });
+  server->on("/api/deck",         HTTP_GET,  [this] { handleGetDeck(); });
+  server->on("/api/deck",         HTTP_POST, [this] { handlePostDeck(); });
+  server->on("/api/rename-deck",  HTTP_POST, [this] { handleRenameDeck(); });
+  server->on("/api/delete-deck",  HTTP_POST, [this] { handleDeleteDeck(); });
 
   server->onNotFound([this] { handleNotFound(); });
   LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
@@ -1419,6 +1420,37 @@ void CrossPointWebServer::handleRenameDeck() const {
   }
 
   LOG_DBG("WEB", "Renamed deck: %s → %s", fromPath.c_str(), toPath.c_str());
+  server->send(200, "text/plain", "OK");
+}
+
+void CrossPointWebServer::handleDeleteDeck() const {
+  if (!server->hasArg("path")) {
+    server->send(400, "text/plain", "Missing path");
+    return;
+  }
+
+  String path = server->arg("path");
+  if (!path.startsWith("/")) path = "/" + path;
+
+  String lower = path; lower.toLowerCase();
+  if (!lower.endsWith(".csv") && !lower.endsWith(".tsv")) {
+    server->send(400, "text/plain", "Only .csv and .tsv files are supported");
+    return;
+  }
+  if (!lower.startsWith("/anki/")) {
+    server->send(400, "text/plain", "Path must be inside /anki/");
+    return;
+  }
+  if (!Storage.exists(path.c_str())) {
+    server->send(404, "text/plain", "Deck not found");
+    return;
+  }
+  if (!Storage.remove(path.c_str())) {
+    server->send(500, "text/plain", "Delete failed");
+    return;
+  }
+
+  LOG_DBG("WEB", "Deleted deck: %s", path.c_str());
   server->send(200, "text/plain", "OK");
 }
 
