@@ -37,31 +37,15 @@ std::string deckSettingsPath(const std::string& csvPath) {
 // --- Anki-specific settings (independent of reader) ---
 
 int AnkiActivity::getFontIdForAnkiSize() const {
-  // Use the global font family setting but our own size
-  switch (SETTINGS.fontFamily) {
-    case CrossPointSettings::BOOKERLY:
-    default:
-      switch (ankiFontSize) {
-        case 0: return BOOKERLY_12_FONT_ID;
-        case 1: default: return BOOKERLY_14_FONT_ID;
-        case 2: return BOOKERLY_16_FONT_ID;
-        case 3: return BOOKERLY_18_FONT_ID;
-      }
-    case CrossPointSettings::NOTOSANS:
-      switch (ankiFontSize) {
-        case 0: return NOTOSANS_12_FONT_ID;
-        case 1: default: return NOTOSANS_14_FONT_ID;
-        case 2: return NOTOSANS_16_FONT_ID;
-        case 3: return NOTOSANS_18_FONT_ID;
-      }
-    case CrossPointSettings::OPENDYSLEXIC:
-      switch (ankiFontSize) {
-        case 0: return OPENDYSLEXIC_8_FONT_ID;
-        case 1: default: return OPENDYSLEXIC_10_FONT_ID;
-        case 2: return OPENDYSLEXIC_12_FONT_ID;
-        case 3: return OPENDYSLEXIC_14_FONT_ID;
-      }
-  }
+  // ankiFontSize cycles 1-3: S(FONT_M) → M(FONT_L) → XL(FONT_XL), skipping XS.
+  static constexpr CrossPointSettings::FONT_SIZE kAnkiTiers[] = {
+    CrossPointSettings::FONT_M,   // 0 — unused
+    CrossPointSettings::FONT_M,   // 1 — S
+    CrossPointSettings::FONT_L,   // 2 — M
+    CrossPointSettings::FONT_XL,  // 3 — XL
+  };
+  auto s = kAnkiTiers[ankiFontSize < 4 ? ankiFontSize : 3];
+  return CrossPointSettings::getFontId(static_cast<CrossPointSettings::FONT_FAMILY>(SETTINGS.fontFamily), s);
 }
 
 void AnkiActivity::loadAnkiSettings() {
@@ -390,12 +374,18 @@ void AnkiActivity::buildCardPages(const std::string& mdText) {
   cardPages.clear();
   cardContentHeight = 0;
 
-  // Write text to temp file for MarkdownParser
+  // Write text to temp file for MarkdownParser.
+  // The SD card may enter a low-power state after several seconds idle; the
+  // first write attempt can fail in that case. One retry after a brief yield
+  // gives the card time to wake and is enough in practice.
   {
     FsFile f;
     if (!Storage.openFileForWrite("ANK", TEMP_MD_PATH, f)) {
-      LOG_ERR("ANK", "Failed to write temp md file");
-      return;
+      vTaskDelay(20 / portTICK_PERIOD_MS);
+      if (!Storage.openFileForWrite("ANK", TEMP_MD_PATH, f)) {
+        LOG_ERR("ANK", "Failed to write temp md file");
+        return;
+      }
     }
     f.write(reinterpret_cast<const uint8_t*>(mdText.c_str()), mdText.size());
     f.close();
@@ -470,21 +460,21 @@ void AnkiActivity::renderScreen() {
                               ? m.top + (vpHeight - cardContentHeight) / 2
                               : m.top;
 
-      renderer.storeBwBuffer();
+      if (renderer.storeBwBuffer()) {
+        renderer.clearScreen(0x00);
+        renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
+        cardPages[currentCardPage]->render(renderer, cachedFontId, m.left, yOffset);
+        renderer.copyGrayscaleLsbBuffers();
 
-      renderer.clearScreen(0x00);
-      renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
-      cardPages[currentCardPage]->render(renderer, cachedFontId, m.left, yOffset);
-      renderer.copyGrayscaleLsbBuffers();
+        renderer.clearScreen(0x00);
+        renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
+        cardPages[currentCardPage]->render(renderer, cachedFontId, m.left, yOffset);
+        renderer.copyGrayscaleMsbBuffers();
 
-      renderer.clearScreen(0x00);
-      renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
-      cardPages[currentCardPage]->render(renderer, cachedFontId, m.left, yOffset);
-      renderer.copyGrayscaleMsbBuffers();
-
-      renderer.displayGrayBuffer();
-      renderer.setRenderMode(GfxRenderer::BW);
-      renderer.restoreBwBuffer();
+        renderer.displayGrayBuffer();
+        renderer.setRenderMode(GfxRenderer::BW);
+        renderer.restoreBwBuffer();
+      }
     }
   }
 }
@@ -579,7 +569,7 @@ void AnkiActivity::renderCardSide(const char* label) {
   renderer.drawText(SMALL_FONT_ID, leftX, topY, label);
 
   if (deck) {
-    const char* sizeNames[] = {"S", "M", "L", "XL"};
+    const char* sizeNames[] = {"XS", "S", "M", "XL"};
     char statusStr[64];
     snprintf(statusStr, sizeof(statusStr), "%zu/%zu  %s  S%u",
              deck->getDuePosition() + 1, deck->getDueCount(),
@@ -612,5 +602,3 @@ void AnkiActivity::renderCardSide(const char* label) {
     GUI.drawButtonHints(renderer, "Again", "Hard", "Good", "Easy");
   }
 }
-
-

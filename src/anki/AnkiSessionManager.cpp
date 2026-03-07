@@ -28,9 +28,11 @@ void AnkiSessionManager::load() {
     return;
   }
   serialization::readPod(file, globalSession);
-  serialization::readPod(file, cardsReviewedThisSession);
+  // cardsReviewedThisSession intentionally NOT restored — it resets to 0 on
+  // every boot/power-cycle so the daily goal must be reached in one sitting.
   file.close();
-  LOG_DBG("ANK", "Loaded global session: %u, reviewed: %u", globalSession, cardsReviewedThisSession);
+  cardsReviewedThisSession = 0;
+  LOG_DBG("ANK", "Loaded global session: %u (reviewed counter reset to 0)", globalSession);
 }
 
 void AnkiSessionManager::save() {
@@ -41,7 +43,6 @@ void AnkiSessionManager::save() {
     return;
   }
   serialization::writePod(file, globalSession);
-  serialization::writePod(file, cardsReviewedThisSession);
   file.close();
 }
 
@@ -50,7 +51,7 @@ bool AnkiSessionManager::onCardReviewed() {
 
   const uint16_t goal = SETTINGS.getDailyGoalValue();
 
-  // Already bumped this visit — just save reviewed count
+  // Already bumped this visit — no further session advancement.
   if (sessionBumpedThisRun) {
     save();
     return false;
