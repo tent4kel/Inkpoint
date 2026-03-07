@@ -139,7 +139,7 @@
       font-size: 2em;
       font-weight: 700;
       line-height: 1.2;
-      color: #2c3e50;
+      color: #000000;
       text-align: center;
       margin: 0 0 4px;
       white-space: nowrap;
@@ -150,10 +150,10 @@
       h1, #deck-title-large { margin-top: 24px; }
     }
     .deck-item {
-      padding: 12px 16px;
+      padding: 16px 16px;
       background: white;
       border-radius: 16px;
-      margin: 8px 0;
+      margin: 16px 0;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       cursor: pointer;
       display: flex;
@@ -280,7 +280,7 @@
         border: none; border-radius: 8px;
         background: transparent;
         cursor: pointer;
-        font-size: 10px; line-height: 1;
+        font-size: 16px; line-height: 1;
         color: #c8c8c8;
         align-items: center; justify-content: center;
         transition: color 0.15s, background 0.15s;
@@ -295,9 +295,9 @@
 
     /* ── Markdown preview ─────────────────────────────────────────── */
     .card-preview {
-      text-align: justify;
+      /*text-align: justify;
       font-size: 0.95em;
-      line-height: 1.55;
+      line-height: 1.55;*/
       color: #2c3e50;
       min-height: 24px;
       user-select: none;
@@ -335,7 +335,7 @@
       resize: none;
       font-family: inherit;
       font-size: 16px;
-      line-height: 1.55;
+      /*line-height: 1.55;*/
       background: transparent;
       padding: 0;
       overflow: hidden;
@@ -346,7 +346,7 @@
 
     /* ── Action buttons ───────────────────────────────────────────── */
     .bar-btn {
-      padding: 11px 14px;
+      padding: 12px 14px;
       border-radius: 16px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.10);
       border: none;
@@ -782,8 +782,7 @@
   // ── Minimal Markdown renderer ─────────────────────────────────────────────
   function md(src, highlight) {
     if (!src || !src.trim()) return '<span class="ph">&#8212;</span>';
-    var s = src.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-    s = s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    var s = src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     var codes = [];
     s = s.replace(/`([^`\n]+)`/g, function(_,c){ codes.push(c); return '\x01'+(codes.length-1)+'\x01'; });
     s = s.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>');
@@ -1220,8 +1219,7 @@
   // ── Export (download) ─────────────────────────────────────────────────────
   function exportDeck(path, filename) {
     api.readDeck(path).then(function(text) {
-      var mime = filename.toLowerCase().endsWith('.tsv') ? 'text/tab-separated-values' : 'text/csv';
-      var blob = new Blob([new TextEncoder().encode(text)], {type: mime + ';charset=utf-8'});
+      var blob = new Blob([new TextEncoder().encode(text)], {type: 'text/plain;charset=utf-8'});
       var url  = URL.createObjectURL(blob);
       var a    = document.createElement('a');
       a.href = url; a.download = filename;
@@ -1444,6 +1442,10 @@
           return [row[0] || '', row[1] || ''];
         });
 
+        console.log('[paste] delim=' + JSON.stringify(pasteDelim) +
+          ' lines=' + nonEmpty.length +
+          ' parsed=' + JSON.stringify(parsed));
+
         rows[i][0] = parsed[0][0];
         rows[i][1] = parsed[0][1];
 
@@ -1614,7 +1616,7 @@
     var M   = mac ? '\u2318' : 'Ctrl+';
     var RET = mac ? '\u21b5' : 'Enter';
     document.getElementById('hint-mods').innerHTML =
-      'Tab \u00b7 sides &nbsp;&nbsp; paste TSV \u00b7 bulk add &nbsp;&nbsp; ' +
+      'Tab \u00b7 sides &nbsp;&nbsp; ' +
       M + 'B \u00b7 bold &nbsp;&nbsp; ' +
       M + 'I \u00b7 italic &nbsp;&nbsp; ' +
       M + 'S \u00b7 save &nbsp;&nbsp; ' +
