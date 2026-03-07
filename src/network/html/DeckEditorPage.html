@@ -1350,6 +1350,61 @@
           }
         }
       });
+
+      // ── Smart paste ───────────────────────────────────────────────
+      // Routes pasted text through the RFC-4180 parser so quoted
+      // delimiters and quoted newlines never advance row/column.
+      // Tab always wins as delimiter (spreadsheet paste); otherwise
+      // fall back to currentDelim.
+      ta.addEventListener('paste', function(e) {
+        var text = (e.clipboardData || window.clipboardData).getData('text');
+        if (!text) return;
+
+        // Normalize ALL line-ending styles to \n before any processing.
+        var normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+        var pasteDelim = normalized.indexOf('\t') !== -1 ? '\t' : currentDelim;
+        var hasDelim   = normalized.indexOf(pasteDelim) !== -1;
+        var nonEmpty   = normalized.split('\n').filter(function(l){ return l !== ''; });
+        if (!hasDelim && nonEmpty.length < 2) return;  // plain text — don't intercept
+
+        e.preventDefault();
+
+        var parsed_csv = parseCSV(normalized, pasteDelim);
+        var allRows = (parsed_csv.headers.length ? [parsed_csv.headers] : []).concat(parsed_csv.rows);
+        if (!allRows.length) return;
+
+        var parsed = allRows.map(function(row) {
+          return [row[0] || '', row[1] || ''];
+        });
+
+        rows[i][0] = parsed[0][0];
+        rows[i][1] = parsed[0][1];
+
+        if (parsed.length > 1) {
+          var newRows = parsed.slice(1).map(function(r){
+            return [r[0], r[1], '0', '2500', '0', '0'];
+          });
+          rows = rows.slice(0, i + 1).concat(newRows).concat(rows.slice(i + 1));
+        }
+
+        isDirty = true;
+        searchQuery = ''; document.getElementById('search-input').value = '';
+        renderCards();
+
+        // Refocus: single-line → back field; multi-line → scroll to first
+        setTimeout(function() {
+          var allWraps = document.getElementById('cards-container').querySelectorAll('.card-wrap');
+          var target = allWraps[i];
+          if (!target) return;
+          var hs = target.querySelectorAll('.card-half');
+          if (parsed.length === 1 && hs[1]) {
+            hs[1].classList.add('editing');
+            hs[1].querySelector('textarea').focus();
+          }
+          target.scrollIntoView({behavior:'smooth', block:'center'});
+        }, 0);
+      });
     });
 
     setupSwipe(wrap,
