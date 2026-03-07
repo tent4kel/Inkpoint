@@ -1414,24 +1414,63 @@
         }
       });
 
-      // Tab-separated paste: "front\tback\nfront2\tback2" fills/creates cards.
-      // Only intercepts pastes that contain a tab character; plain text falls through.
-      ta.addEventListener('paste',function(e){
-        var text=(e.clipboardData||window.clipboardData).getData('text/plain');
-        if(text.indexOf('\t')===-1) return;
+      // ── Smart paste ───────────────────────────────────────────────
+      // Routes pasted text through the RFC-4180 parser so quoted
+      // delimiters and quoted newlines never advance row/column.
+      // Tab always wins as delimiter (spreadsheet paste); otherwise
+      // fall back to currentDelim.
+      ta.addEventListener('paste', function(e) {
+        var text = (e.clipboardData || window.clipboardData).getData('text');
+        if (!text) return;
+
+        // Normalize ALL line-ending styles to \n before any processing.
+        // parseCSV only handles \r\n and \n; bare \r (some apps/Excel)
+        // would otherwise be treated as a regular character.
+        var normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+        // Tab wins across the entire text (not just first line like sniffDelim)
+        var pasteDelim = normalized.indexOf('\t') !== -1 ? '\t' : currentDelim;
+        var hasDelim   = normalized.indexOf(pasteDelim) !== -1;
+        var nonEmpty   = normalized.split('\n').filter(function(l){ return l !== ''; });
+        if (!hasDelim && nonEmpty.length < 2) return;  // plain text — don't intercept
+
         e.preventDefault();
-        var lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
-        if(lines.length&&lines[lines.length-1]==='') lines.pop();
-        if(!lines.length) return;
-        var parsed=lines.map(function(line){
-          var t=line.indexOf('\t');
-          return t===-1?[line,'','0','2500','0','0']
-                       :[line.substring(0,t),line.substring(t+1),'0','2500','0','0'];
+
+        var parsed_csv = parseCSV(normalized, pasteDelim);
+        var allRows = (parsed_csv.headers.length ? [parsed_csv.headers] : []).concat(parsed_csv.rows);
+        if (!allRows.length) return;
+
+        var parsed = allRows.map(function(row) {
+          return [row[0] || '', row[1] || ''];
         });
-        rows.splice.apply(rows,[i,1].concat(parsed));
-        isDirty=true;
-        searchQuery=''; document.getElementById('search-input').value='';
+
+        rows[i][0] = parsed[0][0];
+        rows[i][1] = parsed[0][1];
+
+        if (parsed.length > 1) {
+          var newRows = parsed.slice(1).map(function(r){
+            return [r[0], r[1], '0', '2500', '0', '0'];
+          });
+          // Rebuild rows array — avoids any splice.apply issues with nested arrays
+          rows = rows.slice(0, i + 1).concat(newRows).concat(rows.slice(i + 1));
+        }
+
+        isDirty = true;
+        searchQuery = ''; document.getElementById('search-input').value = '';
         renderCards();
+
+        // Refocus: single-line → back field for review; multi-line → scroll to first
+        setTimeout(function() {
+          var allWraps = document.getElementById('cards-container').querySelectorAll('.card-wrap');
+          var target = allWraps[i];
+          if (!target) return;
+          var hs = target.querySelectorAll('.card-half');
+          if (parsed.length === 1 && hs[1]) {
+            hs[1].classList.add('editing');
+            hs[1].querySelector('textarea').focus();
+          }
+          target.scrollIntoView({behavior:'smooth', block:'center'});
+        }, 0);
       });
     });
 
