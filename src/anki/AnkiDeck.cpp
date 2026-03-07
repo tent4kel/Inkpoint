@@ -16,43 +16,77 @@ constexpr const char* AnkiDeck::SM2_HEADERS[];
 AnkiDeck::AnkiDeck(std::string csvPath) : csvPath(std::move(csvPath)) {}
 
 bool AnkiDeck::load() {
-  std::vector<CsvRow> rows;
-  if (!CsvParser::parseFile(csvPath, rows)) {
+  FsFile file;
+  if (!Storage.openFileForRead("ANK", csvPath, file)) {
     return false;
   }
 
-  if (rows.size() < 2) {
-    LOG_ERR("ANK", "CSV has no data rows");
+  const char delim = CsvParser::delimiterForPath(csvPath);
+
+  // Stream line-by-line to avoid a large contiguous malloc for the whole file.
+  // CsvParser::parseLine() is called per line so only one row is in memory at a time.
+  constexpr size_t LINE_BUF_SIZE = 2048;
+  auto* lineBuf = static_cast<char*>(malloc(LINE_BUF_SIZE));
+  if (!lineBuf) {
+    file.close();
+    LOG_ERR("ANK", "OOM: line buffer");
     return false;
   }
 
-  // Check if SM-2 columns already exist
-  const auto& header = rows[0];
-  bool hasSM2 = header.fields.size() >= TOTAL_COLS;
+  constexpr size_t CHUNK = 512;
+  char chunk[CHUNK];
+  size_t lineLen = 0;
+  bool inQuotes  = false;
+  bool isFirstRow = true;
+  bool hasSM2    = false;
 
   cards.clear();
-  cards.reserve(rows.size() - 1);
 
-  for (size_t i = 1; i < rows.size(); i++) {
-    auto& row = rows[i];
-    if (row.fields.size() < 2) continue;
+  auto processLine = [&](size_t len) {
+    if (len == 0) return;
+    if (lineBuf[len - 1] == '\r') len--;
+    if (len == 0) return;
+
+    CsvRow row = CsvParser::parseLine(lineBuf, len, delim);
+
+    if (isFirstRow) {
+      isFirstRow = false;
+      hasSM2 = row.fields.size() >= TOTAL_COLS;
+      return;
+    }
+    if (row.fields.size() < 2) return;
 
     FlashCard card;
     card.front = row.fields[COL_FRONT];
-    card.back = row.fields[COL_BACK];
-
+    card.back  = row.fields[COL_BACK];
     if (hasSM2 && row.fields.size() >= TOTAL_COLS) {
-      card.schedule.repetitions = static_cast<uint16_t>(atoi(row.fields[COL_REPS].c_str()));
-      card.schedule.easinessFactor = static_cast<uint16_t>(atoi(row.fields[COL_EF].c_str()));
-      card.schedule.interval = static_cast<uint32_t>(atol(row.fields[COL_INTERVAL].c_str()));
+      card.schedule.repetitions       = static_cast<uint16_t>(atoi(row.fields[COL_REPS].c_str()));
+      card.schedule.easinessFactor    = static_cast<uint16_t>(atoi(row.fields[COL_EF].c_str()));
+      card.schedule.interval          = static_cast<uint32_t>(atol(row.fields[COL_INTERVAL].c_str()));
       card.schedule.nextReviewSession = static_cast<uint32_t>(atol(row.fields[COL_NEXT_SESSION].c_str()));
     }
-    // Otherwise schedule stays at defaults (new card)
-
     cards.push_back(std::move(card));
-  }
+  };
 
-  // If no SM-2 columns, write them now
+  while (file.available()) {
+    int n = file.read(chunk, CHUNK);
+    if (n <= 0) break;
+    for (int i = 0; i < n; i++) {
+      const char c = chunk[i];
+      if (c == '"') inQuotes = !inQuotes;
+      if (!inQuotes && c == '\n') {
+        processLine(lineLen);
+        lineLen = 0;
+      } else if (lineLen < LINE_BUF_SIZE - 1) {
+        lineBuf[lineLen++] = c;
+      }
+    }
+  }
+  if (lineLen > 0) processLine(lineLen);  // last line without trailing newline
+
+  free(lineBuf);
+  file.close();
+
   if (!hasSM2) {
     LOG_DBG("ANK", "Adding SM-2 columns on first load");
     save();
@@ -158,33 +192,111 @@ uint32_t AnkiDeck::getCurrentSession() const {
 }
 
 size_t AnkiDeck::countDueCards(const std::string& csvPath) {
-  std::vector<CsvRow> rows;
-  if (!CsvParser::parseFile(csvPath, rows)) {
+  // Streaming implementation: uses only stack buffers, no heap allocation.
+  // This avoids std::bad_alloc when the heap is fragmented after studying.
+  FsFile file;
+  if (!Storage.openFileForRead("ANK", csvPath, file)) {
     return 0;
   }
 
-  if (rows.size() < 2) return 0;
-
-  // Check if SM-2 columns exist
-  const auto& header = rows[0];
-  bool hasSM2 = header.fields.size() >= TOTAL_COLS;
-
-  if (!hasSM2) {
-    // All cards are new (due at session 0)
-    return rows.size() - 1;
-  }
-
+  const char delim = CsvParser::delimiterForPath(csvPath);
   const uint32_t session = ANKI_SESSION.getSession();
+
+  bool isFirstRow = true;
+  bool hasSM2 = false;
   size_t count = 0;
-  for (size_t i = 1; i < rows.size(); i++) {
-    if (rows[i].fields.size() >= TOTAL_COLS) {
-      uint32_t nextSession = static_cast<uint32_t>(atol(rows[i].fields[COL_NEXT_SESSION].c_str()));
-      if (nextSession <= session) {
-        count++;
+  size_t totalDataRows = 0;
+
+  // Per-character CSV state machine
+  int  fieldIdx          = 0;
+  bool inQuotes          = false;
+  bool prevWasCloseQuote = false;
+  char numBuf[16];
+  int  numLen = 0;
+  bool rowHasData = false;
+
+  constexpr size_t CHUNK = 1024;
+  char chunk[CHUNK];
+
+  while (file.available()) {
+    int n = file.read(chunk, CHUNK);
+    if (n <= 0) break;
+    for (int i = 0; i < n; i++) {
+      const char c = chunk[i];
+
+      // --- Quote handling (handles "" escape) ---
+      if (prevWasCloseQuote) {
+        prevWasCloseQuote = false;
+        if (c == '"') {
+          // Escaped quote inside quoted field — re-enter quote mode, skip char
+          inQuotes = true;
+          continue;
+        }
+        // Fall through: c is first char after closing quote, process normally
+      }
+
+      if (inQuotes) {
+        if (c == '"') { inQuotes = false; prevWasCloseQuote = true; }
+        // All other chars inside quotes are skipped (we don't need their value)
+        continue;
+      }
+
+      // --- Normal (non-quoted) mode ---
+      if (c == '"' && numLen == 0) {
+        inQuotes = true;
+        continue;
+      }
+
+      if (c == '\r') continue;
+
+      if (c == delim) {
+        fieldIdx++;
+        numLen = 0;
+        continue;
+      }
+
+      if (c == '\n') {
+        if (rowHasData) {
+          if (isFirstRow) {
+            hasSM2 = (fieldIdx + 1) >= TOTAL_COLS;
+            isFirstRow = false;
+          } else {
+            totalDataRows++;
+            if (hasSM2 && fieldIdx == TOTAL_COLS - 1 && numLen > 0) {
+              numBuf[numLen] = '\0';
+              uint32_t nextSession = static_cast<uint32_t>(atol(numBuf));
+              if (nextSession <= session) count++;
+            }
+          }
+        }
+        // Reset for next row
+        fieldIdx  = 0;
+        numLen    = 0;
+        rowHasData = false;
+        continue;
+      }
+
+      rowHasData = true;
+      // Accumulate only the NextReviewSession field (index TOTAL_COLS-1)
+      if (fieldIdx == TOTAL_COLS - 1 && numLen < static_cast<int>(sizeof(numBuf)) - 1) {
+        numBuf[numLen++] = c;
       }
     }
   }
-  return count;
+
+  // Handle last row if file doesn't end with newline
+  if (rowHasData && !isFirstRow) {
+    totalDataRows++;
+    if (hasSM2 && fieldIdx == TOTAL_COLS - 1 && numLen > 0) {
+      numBuf[numLen] = '\0';
+      uint32_t nextSession = static_cast<uint32_t>(atol(numBuf));
+      if (nextSession <= session) count++;
+    }
+  }
+
+  file.close();
+  LOG_DBG("ANK", "countDueCards(%s): %zu due / %zu total", csvPath.c_str(), count, totalDataRows);
+  return hasSM2 ? count : totalDataRows;
 }
 
 std::string AnkiDeck::getTitle() const {
