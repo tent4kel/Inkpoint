@@ -261,15 +261,6 @@ void onGoToReader(const std::string& initialEpubPath) {
   }
   const std::string bookPath = initialEpubPath;  // Copy before exitActivity() invalidates the reference
 
-  // Route Instapaper HTML files through InstapaperActivity so back-button and
-  // advance/delete callbacks work correctly (e.g. opening from Recent Books or boot-resume).
-  if (StringUtils::checkFileExtension(bookPath, ".html") &&
-      bookPath.find(INSTAPAPER_STORE.getDownloadFolder()) == 0) {
-    InstapaperActivity::setPendingOpenPath(bookPath);
-    onGoToInstapaper();
-    return;
-  }
-
   exitActivity();
   enterNewActivity(new ReaderActivity(renderer, mappedInputManager, bookPath, onGoHome, onGoToMyLibraryWithPath));
 }

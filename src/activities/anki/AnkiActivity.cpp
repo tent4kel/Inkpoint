@@ -374,12 +374,18 @@ void AnkiActivity::buildCardPages(const std::string& mdText) {
   cardPages.clear();
   cardContentHeight = 0;
 
-  // Write text to temp file for MarkdownParser
+  // Write text to temp file for MarkdownParser.
+  // The SD card may enter a low-power state after several seconds idle; the
+  // first write attempt can fail in that case. One retry after a brief yield
+  // gives the card time to wake and is enough in practice.
   {
     FsFile f;
     if (!Storage.openFileForWrite("ANK", TEMP_MD_PATH, f)) {
-      LOG_ERR("ANK", "Failed to write temp md file");
-      return;
+      vTaskDelay(20 / portTICK_PERIOD_MS);
+      if (!Storage.openFileForWrite("ANK", TEMP_MD_PATH, f)) {
+        LOG_ERR("ANK", "Failed to write temp md file");
+        return;
+      }
     }
     f.write(reinterpret_cast<const uint8_t*>(mdText.c_str()), mdText.size());
     f.close();
@@ -596,5 +602,3 @@ void AnkiActivity::renderCardSide(const char* label) {
     GUI.drawButtonHints(renderer, "Again", "Hard", "Good", "Easy");
   }
 }
-
-

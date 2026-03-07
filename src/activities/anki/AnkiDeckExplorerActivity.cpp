@@ -139,9 +139,19 @@ void AnkiDeckExplorerActivity::scanDecks() {
   }
 
   char name[128];
-  for (auto file = dir.openNextFile(); file; file = dir.openNextFile()) {
-    if (file.isDirectory()) continue;
+  // DESTRUCTOR_CLOSES_FILE=0 in SdFat config, and the move-assignment operator
+  // does not close the old handle before overwriting it. Each openNextFile()
+  // call in a for-loop increment therefore leaks the previous directory-entry
+  // handle. Use a while loop with an explicit file.close() to avoid exhausting
+  // the FAT layer's open-file tracking before saveDeckIndex() is called.
+  while (true) {
+    FsFile file = dir.openNextFile();
+    if (!file) break;
+    bool isDir = file.isDirectory();
     file.getName(name, sizeof(name));
+    file.close();  // Always close before any further SD operations
+
+    if (isDir) continue;
     std::string filename(name);
 
     if (filename.size() > 4 && (filename.substr(filename.size() - 4) == ".csv" ||
