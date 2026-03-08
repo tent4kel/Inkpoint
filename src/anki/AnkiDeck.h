@@ -56,5 +56,8 @@ class AnkiDeck {
   size_t getRemainingCount() const { return duePosition < dueIndices.size() ? dueIndices.size() - duePosition : 0; }
   const std::string& getPath() const { return csvPath; }
 
+  // Count all due cards across the full deck (no pool limit) — for display on overview.
+  size_t countAllDue() const;
+
   std::string getTitle() const;
 };

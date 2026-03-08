@@ -307,6 +307,15 @@ size_t AnkiDeck::countDueCards(const std::string& csvPath) {
   return hasSM2 ? count : totalDataRows;
 }
 
+size_t AnkiDeck::countAllDue() const {
+  const uint32_t session = ANKI_SESSION.getSession();
+  size_t count = 0;
+  for (const auto& card : cards) {
+    if (card.schedule.nextReviewSession <= session) count++;
+  }
+  return count;
+}
+
 std::string AnkiDeck::getTitle() const {
   size_t lastSlash = csvPath.find_last_of('/');
   std::string filename = (lastSlash != std::string::npos) ? csvPath.substr(lastSlash + 1) : csvPath;

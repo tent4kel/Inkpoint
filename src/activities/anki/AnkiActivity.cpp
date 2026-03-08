@@ -354,13 +354,20 @@ void AnkiActivity::loop() {
           buildCardPages(frontContent());
           currentCardPage = 0;
         } else {
-          // Round complete — advance session so interval-1 cards are due next cycle
+          // Pool exhausted — bump session if goal met, then silently rebuild.
+          // Only return to the deck overview when there are truly no more due cards.
           ANKI_SESSION.onCycleComplete();
           deck->buildDueList();
-          reviewCompleted = true;
-          state = State::DECK_SUMMARY;
-          cardPages.clear();
-          inputGuard = true;  // Prevent rating button release from firing Confirm in DECK_SUMMARY
+          if (deck->currentCard()) {
+            state = State::FRONT;
+            buildCardPages(frontContent());
+            currentCardPage = 0;
+          } else {
+            reviewCompleted = true;
+            state = State::DECK_SUMMARY;
+            cardPages.clear();
+            inputGuard = true;
+          }
         }
         updateRequired = true;
       }
@@ -491,7 +498,7 @@ void AnkiActivity::renderDeckSummary() {
     return;
   }
 
-  const size_t dueCount = deck->getDueCount();
+  const size_t dueCount = deck->countAllDue();
   const int screenW = renderer.getScreenWidth();
 
   // Word-wrap the deck title to fit within screen width
