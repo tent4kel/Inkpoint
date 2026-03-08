@@ -585,8 +585,8 @@ void AnkiActivity::renderCardSide(const char* label) {
   if (deck) {
     const char* sizeNames[] = {"XS", "S", "M", "XL"};
     char statusStr[64];
-    snprintf(statusStr, sizeof(statusStr), "%zu/%zu  %s  S%u",
-             deck->getDuePosition() + 1, deck->getDueCount(),
+    snprintf(statusStr, sizeof(statusStr), "%zu due  %s  S%u",
+             deck->countAllDue(),
              sizeNames[ankiFontSize], ANKI_SESSION.getSession());
     int statusW = renderer.getTextWidth(SMALL_FONT_ID, statusStr);
     renderer.drawText(SMALL_FONT_ID, rightX - statusW, topY, statusStr);

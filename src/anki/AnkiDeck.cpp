@@ -182,11 +182,6 @@ bool AnkiDeck::gradeCurrentCard(Grade grade) {
   auto& card = cards[dueIndices[duePosition]];
   card.schedule = SM2::review(card.schedule, grade, session);
 
-  // If Again, re-queue this card at end of due list
-  if (grade == Grade::Again) {
-    dueIndices.push_back(dueIndices[duePosition]);
-  }
-
   duePosition++;
   save();
 
