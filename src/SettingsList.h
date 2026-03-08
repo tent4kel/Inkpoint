@@ -76,14 +76,15 @@ inline std::vector<SettingInfo> getSettingsList() {
       SettingInfo::Enum(StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeout,
                         {StrId::STR_MIN_1, StrId::STR_MIN_5, StrId::STR_MIN_10, StrId::STR_MIN_15, StrId::STR_MIN_30},
                         "sleepTimeout", StrId::STR_CAT_SYSTEM),
+      // Anki settings — device UI uses AnkiSettingsActivity submenu; web API exposes them under STR_ANKI category
       SettingInfo::Enum(StrId::STR_ANKI_DAILY_GOAL, &CrossPointSettings::ankiDailyGoal,
                         {StrId::STR_GOAL_5, StrId::STR_GOAL_10, StrId::STR_GOAL_15, StrId::STR_GOAL_20,
                          StrId::STR_GOAL_30, StrId::STR_GOAL_50},
-                        "ankiDailyGoal", StrId::STR_CAT_SYSTEM),
-      SettingInfo::Enum(StrId::STR_ANKI_POOL_SIZE, &CrossPointSettings::ankiPoolSize,
+                        "ankiDailyGoal", StrId::STR_ANKI),
+      SettingInfo::Enum(StrId::STR_LEARNING_STACK_LIMIT, &CrossPointSettings::ankiPoolSize,
                         {StrId::STR_POOL_10, StrId::STR_POOL_20, StrId::STR_POOL_30, StrId::STR_POOL_50,
                          StrId::STR_POOL_UNLIMITED},
-                        "ankiPoolSize", StrId::STR_CAT_SYSTEM),
+                        "ankiPoolSize", StrId::STR_ANKI),
 
       // --- KOReader Sync (web-only, uses KOReaderCredentialStore) ---
       SettingInfo::DynamicString(

@@ -13,6 +13,7 @@
 #include "OtaUpdateActivity.h"
 #include "SettingsList.h"
 #include "StatusBarSettingsActivity.h"
+#include "activities/anki/AnkiSettingsActivity.h"
 #include "activities/instapaper/InstapaperSettingsActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include <esp_ota_ops.h>
@@ -51,6 +52,7 @@ void SettingsActivity::onEnter() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_BROWSER, SettingAction::OPDSBrowser));
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_ANKI, SettingAction::AnkiSettings));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_INSTAPAPER, SettingAction::Instapaper));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
@@ -195,6 +197,9 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::OPDSBrowser:
         enterSubActivity(new CalibreSettingsActivity(renderer, mappedInput, onComplete));
+        break;
+      case SettingAction::AnkiSettings:
+        enterSubActivity(new AnkiSettingsActivity(renderer, mappedInput, onComplete));
         break;
       case SettingAction::Instapaper:
         enterSubActivity(new InstapaperSettingsActivity(renderer, mappedInput, onComplete));

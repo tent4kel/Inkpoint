@@ -19,6 +19,7 @@ enum class SettingAction {
   KOReaderSync,
   OPDSBrowser,
   Instapaper,
+  AnkiSettings,
   Network,
   ClearCache,
   CheckForUpdates,
