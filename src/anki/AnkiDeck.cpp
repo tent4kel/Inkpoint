@@ -179,8 +179,10 @@ bool AnkiDeck::gradeCurrentCard(Grade grade) {
   if (duePosition >= dueIndices.size()) return false;
 
   const uint32_t session = ANKI_SESSION.getSession();
+  // Unlimited pool = no artificial learning phase; pure SM-2 from first review.
+  const uint16_t threshold = SETTINGS.getPoolSizeValue() == 0 ? 0 : SM2::LEARNING_REPS;
   auto& card = cards[dueIndices[duePosition]];
-  card.schedule = SM2::review(card.schedule, grade, session);
+  card.schedule = SM2::review(card.schedule, grade, session, threshold);
 
   duePosition++;
   save();

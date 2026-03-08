@@ -4,13 +4,8 @@
 
 namespace SM2 {
 
-// Cards with repetitions < LEARNING_REPS are in the learning phase and use
-// fixed small intervals. Only Good/Easy advance repetitions; Hard keeps the
-// card in its current stage. Once repetitions reaches LEARNING_REPS the card
-// graduates to EF-driven SM-2 growth.
-constexpr uint16_t LEARNING_REPS = 3;
-
-CardSchedule review(const CardSchedule& card, Grade grade, uint32_t currentSession) {
+CardSchedule review(const CardSchedule& card, Grade grade, uint32_t currentSession,
+                    uint16_t learningThreshold) {
   CardSchedule next = card;
 
   // Update easiness factor based on grade
@@ -39,7 +34,7 @@ CardSchedule review(const CardSchedule& card, Grade grade, uint32_t currentSessi
     // Hard never advances repetitions in any phase — the card stays in its
     // current stage. Learning phase: always back next session (interval=1).
     // SM-2 phase: 30% interval reduction, same as classic SM-2 Hard.
-    if (card.repetitions < LEARNING_REPS) {
+    if (card.repetitions < learningThreshold) {
       next.interval = 1;
     } else {
       next.interval = std::max(static_cast<uint32_t>(1), card.interval * 7 / 10);
@@ -48,7 +43,7 @@ CardSchedule review(const CardSchedule& card, Grade grade, uint32_t currentSessi
     next.nextReviewSession = currentSession + next.interval;
   } else {
     // Good or Easy: advance repetitions.
-    if (card.repetitions < LEARNING_REPS) {
+    if (card.repetitions < learningThreshold) {
       // Learning phase: fixed small intervals regardless of EF.
       // Again→0  Hard→1  Good→1  Easy→2
       next.interval = (grade == Grade::Easy) ? 2 : 1;

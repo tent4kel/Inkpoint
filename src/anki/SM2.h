@@ -18,8 +18,15 @@ enum class Grade : uint8_t {
 
 namespace SM2 {
 
+// Number of successful (Good/Easy) reviews before graduating from the fixed
+// learning phase to EF-driven SM-2 growth. Pass 0 to skip the learning phase.
+constexpr uint16_t LEARNING_REPS = 3;
+
 // Apply SM-2 algorithm. Returns updated schedule.
 // All intervals are in sessions (not days) since the device has no reliable clock.
-CardSchedule review(const CardSchedule& card, Grade grade, uint32_t currentSession);
+// learningThreshold: cards with repetitions < this use fixed intervals (learning phase).
+// Pass 0 to disable the learning phase entirely (pure SM-2 from the first review).
+CardSchedule review(const CardSchedule& card, Grade grade, uint32_t currentSession,
+                    uint16_t learningThreshold = LEARNING_REPS);
 
 }  // namespace SM2
