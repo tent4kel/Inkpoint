@@ -516,12 +516,25 @@ void AnkiActivity::renderDeckSummary() {
   const int numTitleLines = static_cast<int>(titleLines.size());
   const bool allDone = reviewCompleted && dueCount == 0;
 
-  // Block:  title lines | gap | due/total | mode | gap | daily-goal/session | [done msg]
+  // Top bar: Daily Goal (left) and Session (right), flush to bezel
+  {
+    int bTop, bRight, bBottom, bLeft;
+    renderer.getOrientedViewableTRBL(&bTop, &bRight, &bBottom, &bLeft);
+    char lbuf[32], rbuf[24];
+    snprintf(lbuf, sizeof(lbuf), "Daily Goal: %u/%u", ANKI_SESSION.getCardsReviewed(), SETTINGS.getDailyGoalValue());
+    snprintf(rbuf, sizeof(rbuf), "Session: %u", ANKI_SESSION.getSession());
+    const int padH = lineH;
+    const int padV = lineH / 2;
+    renderer.drawText(UI_12_FONT_ID, bLeft + padH, bTop + padV, lbuf);
+    const int rw = renderer.getTextWidth(UI_12_FONT_ID, rbuf);
+    renderer.drawText(UI_12_FONT_ID, screenW - bRight - rw - padH, bTop + padV, rbuf);
+  }
+
+  // Centred block: title | gap | Due Now / Total | Mode | [done]
   const int blockHeight = numTitleLines * titleLineH
-                        + lineH                   // gap after title
-                        + (lineH + 8) * 2         // due/total + mode
-                        + lineH                   // gap before footer
-                        + lineH                   // daily-goal/session
+                        + lineH              // gap after title
+                        + (lineH + 8)        // Due Now / Total
+                        + lineH              // Mode
                         + (allDone ? lineH + 8 : 0);
   int y = (screenH - blockHeight) / 2;
 
@@ -532,27 +545,16 @@ void AnkiActivity::renderDeckSummary() {
   }
   y += lineH;  // gap
 
-  // Due: XX    Total Cards: XX
-  char buf[80];
-  snprintf(buf, sizeof(buf), "Due: %zu    Total: %zu", dueCount, deck->getTotalCards());
+  char buf[64];
+  snprintf(buf, sizeof(buf), "Due Now: %zu    Total: %zu", dueCount, deck->getTotalCards());
   renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
   y += lineH + 8;
 
-  // Mode: Front (Back) First
-  snprintf(buf, sizeof(buf), "Mode: %s (%s) First",
-           ankiSwapFrontBack ? "Back" : "Front",
-           ankiSwapFrontBack ? "Front" : "Back");
-  renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
-  y += lineH + lineH;  // stat gap + section gap
-
-  // Daily Goal: XX/XX    Session: XX
-  snprintf(buf, sizeof(buf), "Daily Goal: %u/%u    Session: %u",
-           ANKI_SESSION.getCardsReviewed(), SETTINGS.getDailyGoalValue(),
-           ANKI_SESSION.getSession());
-  renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
-  y += lineH + 8;
+  renderer.drawCenteredText(UI_12_FONT_ID, y, ankiSwapFrontBack ? "Back First" : "Front First");
+  y += lineH;
 
   if (allDone) {
+    y += 8;
     renderer.drawCenteredText(UI_12_FONT_ID, y, "All caught up!", true);
   }
 
