@@ -126,6 +126,7 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
   doc["fadingFix"] = s.fadingFix;
   doc["embeddedStyle"] = s.embeddedStyle;
   doc["ankiDailyGoal"] = s.ankiDailyGoal;
+  doc["ankiPoolSize"] = s.ankiPoolSize;
   doc["statusBarChapterPageCount"] = s.statusBarChapterPageCount;
   doc["statusBarBookProgressPercentage"] = s.statusBarBookProgressPercentage;
   doc["statusBarProgressBar"] = s.statusBarProgressBar;
@@ -188,6 +189,7 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
   s.fadingFix = doc["fadingFix"] | (uint8_t)0;
   s.embeddedStyle = doc["embeddedStyle"] | (uint8_t)1;
   s.ankiDailyGoal = clamp(doc["ankiDailyGoal"] | (uint8_t)S::GOAL_10, S::ANKI_DAILY_GOAL_COUNT, S::GOAL_10);
+  s.ankiPoolSize = clamp(doc["ankiPoolSize"] | (uint8_t)S::POOL_20, S::ANKI_POOL_SIZE_COUNT, S::POOL_20);
 
   const char* url = doc["opdsServerUrl"] | "";
   strncpy(s.opdsServerUrl, url, sizeof(s.opdsServerUrl) - 1);
