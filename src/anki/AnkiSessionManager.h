@@ -32,8 +32,11 @@ class AnkiSessionManager {
   // Reset the per-visit bump cap (call when returning to explorer)
   void resetSessionBump() { sessionBumpedThisRun = false; }
 
-  // Called after each card is graded. Returns true if session bumped.
-  bool onCardReviewed();
+  // Called after each card is graded (counts only; no session bump).
+  void onCardReviewed();
+
+  // Called when a review cycle completes. Bumps session once per deck visit.
+  void onCycleComplete();
 };
 
 #define ANKI_SESSION AnkiSessionManager::instance()

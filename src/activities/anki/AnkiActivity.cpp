@@ -354,7 +354,8 @@ void AnkiActivity::loop() {
           buildCardPages(frontContent());
           currentCardPage = 0;
         } else {
-          // Round complete — rebuild due list and return to summary
+          // Round complete — advance session so interval-1 cards are due next cycle
+          ANKI_SESSION.onCycleComplete();
           deck->buildDueList();
           reviewCompleted = true;
           state = State::DECK_SUMMARY;
