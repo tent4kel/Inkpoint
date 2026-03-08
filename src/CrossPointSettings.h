@@ -132,6 +132,9 @@ class CrossPointSettings {
   // Anki daily goal options (number of cards per session bump)
   enum ANKI_DAILY_GOAL { GOAL_5 = 0, GOAL_10 = 1, GOAL_15 = 2, GOAL_20 = 3, GOAL_30 = 4, GOAL_50 = 5, ANKI_DAILY_GOAL_COUNT };
 
+  // Anki session pool size (max due cards drawn per session, 0 = unlimited)
+  enum ANKI_POOL_SIZE { POOL_10 = 0, POOL_20 = 1, POOL_30 = 2, POOL_50 = 3, POOL_UNLIMITED = 4, ANKI_POOL_SIZE_COUNT };
+
   // Hide battery percentage
   enum HIDE_BATTERY_PERCENTAGE { HIDE_NEVER = 0, HIDE_READER = 1, HIDE_ALWAYS = 2, HIDE_BATTERY_PERCENTAGE_COUNT };
 
@@ -198,6 +201,8 @@ class CrossPointSettings {
   uint8_t embeddedStyle = 1;
   // Anki daily goal (index into ANKI_DAILY_GOAL enum, default GOAL_10 = 10 cards)
   uint8_t ankiDailyGoal = GOAL_10;
+  // Anki session pool size (index into ANKI_POOL_SIZE enum, default POOL_20 = 20 cards)
+  uint8_t ankiPoolSize = POOL_20;
 
   ~CrossPointSettings() = default;
 
@@ -225,6 +230,7 @@ class CrossPointSettings {
   unsigned long getSleepTimeoutMs() const;
   int getRefreshFrequency() const;
   uint16_t getDailyGoalValue() const;
+  uint16_t getPoolSizeValue() const;  // returns 0 for unlimited
 };
 
 // Helper macro to access settings

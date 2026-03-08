@@ -304,6 +304,16 @@ uint16_t CrossPointSettings::getDailyGoalValue() const {
   }
 }
 
+uint16_t CrossPointSettings::getPoolSizeValue() const {
+  switch (ankiPoolSize) {
+    case POOL_10: return 10;
+    case POOL_20: default: return 20;
+    case POOL_30: return 30;
+    case POOL_50: return 50;
+    case POOL_UNLIMITED: return 0;
+  }
+}
+
 int CrossPointSettings::getReaderFontId() const {
   switch (fontFamily) {
     case BOOKERLY:
