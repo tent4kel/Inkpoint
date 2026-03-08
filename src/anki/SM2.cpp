@@ -4,6 +4,12 @@
 
 namespace SM2 {
 
+// Cards with repetitions < LEARNING_REPS are in the learning phase and use
+// fixed small intervals. Only Good/Easy advance repetitions; Hard keeps the
+// card in its current stage. Once repetitions reaches LEARNING_REPS the card
+// graduates to EF-driven SM-2 growth.
+constexpr uint16_t LEARNING_REPS = 3;
+
 CardSchedule review(const CardSchedule& card, Grade grade, uint32_t currentSession) {
   CardSchedule next = card;
 
@@ -25,31 +31,36 @@ CardSchedule review(const CardSchedule& card, Grade grade, uint32_t currentSessi
   next.easinessFactor = std::max(next.easinessFactor, static_cast<uint16_t>(1300));
 
   if (grade == Grade::Again) {
-    // Failed: reset repetitions, show again this session
+    // Reset to start of learning phase; re-queued in the same session.
     next.repetitions = 0;
     next.interval = 0;
     next.nextReviewSession = currentSession;
-  } else {
-    // Passed: compute new interval
-    if (card.repetitions == 0) {
+  } else if (grade == Grade::Hard) {
+    // Hard never advances repetitions in any phase — the card stays in its
+    // current stage. Learning phase: always back next session (interval=1).
+    // SM-2 phase: 30% interval reduction, same as classic SM-2 Hard.
+    if (card.repetitions < LEARNING_REPS) {
       next.interval = 1;
-    } else if (card.repetitions == 1) {
-      next.interval = 6;
     } else {
-      next.interval = static_cast<uint32_t>(card.interval * next.easinessFactor / 1000);
-      if (next.interval < 1) next.interval = 1;
+      next.interval = std::max(static_cast<uint32_t>(1), card.interval * 7 / 10);
     }
-
-    // Hard: reduce interval slightly (70% of computed)
-    if (grade == Grade::Hard) {
-      next.interval = std::max(static_cast<uint32_t>(1), next.interval * 7 / 10);
+    // next.repetitions unchanged (copied from card above)
+    next.nextReviewSession = currentSession + next.interval;
+  } else {
+    // Good or Easy: advance repetitions.
+    if (card.repetitions < LEARNING_REPS) {
+      // Learning phase: fixed small intervals regardless of EF.
+      // Again→0  Hard→1  Good→1  Easy→2
+      next.interval = (grade == Grade::Easy) ? 2 : 1;
+    } else {
+      // SM-2 phase: EF-driven growth. Minimum 2 to ensure forward progress.
+      next.interval = std::max(
+          static_cast<uint32_t>(2),
+          static_cast<uint32_t>(card.interval * next.easinessFactor / 1000));
+      if (grade == Grade::Easy) {
+        next.interval = std::max(static_cast<uint32_t>(2), next.interval * 13 / 10);
+      }
     }
-    // Easy: boost interval (130% of computed)
-    if (grade == Grade::Easy) {
-      next.interval = next.interval * 13 / 10;
-      if (next.interval < 2) next.interval = 2;
-    }
-
     next.repetitions = card.repetitions + 1;
     next.nextReviewSession = currentSession + next.interval;
   }
