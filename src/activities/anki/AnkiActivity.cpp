@@ -512,44 +512,48 @@ void AnkiActivity::renderDeckSummary() {
     if (!currentLine.empty()) titleLines.push_back(currentLine);
     if (titleLines.empty()) titleLines.push_back(deck->getTitle());
   }
-  const int titleLineCount = static_cast<int>(titleLines.size());
+  const int titleLineH = renderer.getLineHeight(cachedFontId);
+  const int numTitleLines = static_cast<int>(titleLines.size());
+  const bool allDone = reviewCompleted && dueCount == 0;
 
-  // Vertically center the content block
-  const int numLines = 6 + (reviewCompleted && dueCount == 0 ? 1 : 0);
-  const int blockHeight = lineH * (numLines + titleLineCount - 1) + 8 * 4 + lineH * 2;
+  // Block:  title lines | gap | due/total | mode | gap | daily-goal/session | [done msg]
+  const int blockHeight = numTitleLines * titleLineH
+                        + lineH                   // gap after title
+                        + (lineH + 8) * 2         // due/total + mode
+                        + lineH                   // gap before footer
+                        + lineH                   // daily-goal/session
+                        + (allDone ? lineH + 8 : 0);
   int y = (screenH - blockHeight) / 2;
 
-  // Deck title (wrapped)
+  // Deck title (wrapped, card font + bold)
   for (const auto& line : titleLines) {
     renderer.drawCenteredText(cachedFontId, y, line.c_str(), true, EpdFontFamily::BOLD);
-    y += lineH;
+    y += titleLineH;
   }
-  y += lineH;  // extra gap after title
+  y += lineH;  // gap
 
-  // Stats
-  char buf[64];
-  snprintf(buf, sizeof(buf), "Total cards: %zu", deck->getTotalCards());
+  // Due: XX    Total Cards: XX
+  char buf[80];
+  snprintf(buf, sizeof(buf), "Due: %zu    Total: %zu", dueCount, deck->getTotalCards());
   renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
   y += lineH + 8;
 
-  snprintf(buf, sizeof(buf), "Session: %u", ANKI_SESSION.getSession());
+  // Mode: Front (Back) First
+  snprintf(buf, sizeof(buf), "Mode: %s (%s) First",
+           ankiSwapFrontBack ? "Back" : "Front",
+           ankiSwapFrontBack ? "Front" : "Back");
+  renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
+  y += lineH + lineH;  // stat gap + section gap
+
+  // Daily Goal: XX/XX    Session: XX
+  snprintf(buf, sizeof(buf), "Daily Goal: %u/%u    Session: %u",
+           ANKI_SESSION.getCardsReviewed(), SETTINGS.getDailyGoalValue(),
+           ANKI_SESSION.getSession());
   renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
   y += lineH + 8;
 
-  snprintf(buf, sizeof(buf), "Reviewed: %u/%u", ANKI_SESSION.getCardsReviewed(), SETTINGS.getDailyGoalValue());
-  renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
-  y += lineH + 8;
-
-  snprintf(buf, sizeof(buf), "Showing: %s first", ankiSwapFrontBack ? "Back" : "Front");
-  renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
-  y += lineH + 8;
-
-  snprintf(buf, sizeof(buf), "Due: %zu", dueCount);
-  renderer.drawCenteredText(UI_12_FONT_ID, y, buf);
-  y += lineH * 2;
-
-  if (reviewCompleted && dueCount == 0) {
-    renderer.drawCenteredText(UI_12_FONT_ID, y, "Wow, you made it! No cards due!", true);
+  if (allDone) {
+    renderer.drawCenteredText(UI_12_FONT_ID, y, "All caught up!", true);
   }
 
   const char* startLabel = !reviewCompleted ? "Start" : (dueCount > 0 ? "Again" : "Go on");
