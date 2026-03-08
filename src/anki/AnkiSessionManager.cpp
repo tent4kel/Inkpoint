@@ -46,32 +46,19 @@ void AnkiSessionManager::save() {
   file.close();
 }
 
-bool AnkiSessionManager::onCardReviewed() {
+void AnkiSessionManager::onCardReviewed() {
   cardsReviewedThisSession++;
-
-  const uint16_t goal = SETTINGS.getDailyGoalValue();
-
-  // Already bumped this visit — no further session advancement.
-  if (sessionBumpedThisRun) {
-    save();
-    return false;
-  }
-
-  bool shouldBump = cardsReviewedThisSession >= goal;
-  if (!shouldBump && totalDueThisSession > 0 && totalDueThisSession < goal) {
-    shouldBump = cardsReviewedThisSession >= totalDueThisSession;
-  }
-
-  if (shouldBump) {
-    globalSession++;
-    cardsReviewedThisSession = 0;
-    totalDueThisSession = 0;
-    sessionBumpedThisRun = true;
-    save();
-    LOG_DBG("ANK", "Session bumped to %u", globalSession);
-    return true;
-  }
-
   save();
-  return false;
+}
+
+void AnkiSessionManager::onCycleComplete() {
+  // Bump session once per deck visit so that cards with interval=1
+  // (Again, Hard, Good on first review) are due again next cycle.
+  if (sessionBumpedThisRun) return;
+  globalSession++;
+  cardsReviewedThisSession = 0;
+  totalDueThisSession = 0;
+  sessionBumpedThisRun = true;
+  save();
+  LOG_DBG("ANK", "Session bumped to %u (cycle complete)", globalSession);
 }
