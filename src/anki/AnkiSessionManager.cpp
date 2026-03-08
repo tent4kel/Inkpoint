@@ -52,13 +52,23 @@ void AnkiSessionManager::onCardReviewed() {
 }
 
 void AnkiSessionManager::onCycleComplete() {
-  // Bump session once per deck visit so that cards with interval=1
-  // (Again, Hard, Good on first review) are due again next cycle.
+  // Bump session at cycle end (not mid-cycle) so all cards in a pool are
+  // graded at the same session number. Goal must be reached in one sitting —
+  // cardsReviewedThisSession resets to 0 on boot so interrupted sessions don't count.
   if (sessionBumpedThisRun) return;
+
+  const uint16_t goal = SETTINGS.getDailyGoalValue();
+  bool shouldBump = cardsReviewedThisSession >= goal;
+  // If the deck has fewer due cards than the goal, completing all of them counts.
+  if (!shouldBump && totalDueThisSession > 0 && totalDueThisSession < goal) {
+    shouldBump = cardsReviewedThisSession >= totalDueThisSession;
+  }
+  if (!shouldBump) return;
+
   globalSession++;
   cardsReviewedThisSession = 0;
   totalDueThisSession = 0;
   sessionBumpedThisRun = true;
   save();
-  LOG_DBG("ANK", "Session bumped to %u (cycle complete)", globalSession);
+  LOG_DBG("ANK", "Session bumped to %u (cycle complete, goal met)", globalSession);
 }
