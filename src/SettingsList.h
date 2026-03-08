@@ -82,6 +82,10 @@ inline const std::vector<SettingInfo>& getSettingsList() {
                         {StrId::STR_GOAL_5, StrId::STR_GOAL_10, StrId::STR_GOAL_15, StrId::STR_GOAL_20,
                          StrId::STR_GOAL_30, StrId::STR_GOAL_50},
                         "ankiDailyGoal", StrId::STR_CAT_SYSTEM),
+      SettingInfo::Enum(StrId::STR_ANKI_POOL_SIZE, &CrossPointSettings::ankiPoolSize,
+                        {StrId::STR_POOL_10, StrId::STR_POOL_20, StrId::STR_POOL_30, StrId::STR_POOL_50,
+                         StrId::STR_POOL_UNLIMITED},
+                        "ankiPoolSize", StrId::STR_CAT_SYSTEM),
 
       // --- KOReader Sync (web-only, uses KOReaderCredentialStore) ---
       SettingInfo::DynamicString(

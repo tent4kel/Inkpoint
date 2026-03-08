@@ -9,6 +9,7 @@
 #include <functional>
 
 #include "AnkiSessionManager.h"
+#include "CrossPointSettings.h"
 #include "CsvParser.h"
 
 constexpr const char* AnkiDeck::SM2_HEADERS[];
@@ -127,10 +128,17 @@ bool AnkiDeck::save() {
 
 void AnkiDeck::buildDueList() {
   const uint32_t session = ANKI_SESSION.getSession();
+  // Scan cards in CSV order and stop at pool limit. New cards (nextReviewSession=0)
+  // are always due; reviewed cards only when their interval has elapsed.
+  // This creates a gradual introduction effect for large decks: cards near the
+  // top of the CSV fill the pool first, and the frontier advances as those cards
+  // get spaced out by SM-2. Unlimited (poolSize=0) preserves the original behaviour.
+  const uint16_t poolSize = SETTINGS.getPoolSizeValue();
   dueIndices.clear();
   for (size_t i = 0; i < cards.size(); i++) {
     if (cards[i].schedule.nextReviewSession <= session) {
       dueIndices.push_back(i);
+      if (poolSize > 0 && dueIndices.size() >= poolSize) break;
     }
   }
 
@@ -141,7 +149,7 @@ void AnkiDeck::buildDueList() {
   }
 
   duePosition = 0;
-  LOG_DBG("ANK", "Built due list: %zu cards due at session %u", dueIndices.size(), session);
+  LOG_DBG("ANK", "Built due list: %zu cards (pool %u, session %u)", dueIndices.size(), poolSize, session);
 }
 
 void AnkiDeck::buildStudyAheadList() {
