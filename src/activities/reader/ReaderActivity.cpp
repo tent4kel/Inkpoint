@@ -154,9 +154,7 @@ void ReaderActivity::onGoToMdReader(std::unique_ptr<Markdown> md) {
 void ReaderActivity::onGoToHtmlReader(std::unique_ptr<WebArticle> wa) {
   const auto htmlPath = wa->getPath();
   currentBookPath = htmlPath;
-  exitActivity();
-  enterNewActivity(new HtmlReaderActivity(
-      renderer, mappedInput, std::move(wa), [this, htmlPath] { goToLibrary(htmlPath); }, [this] { onGoBack(); }));
+  activityManager.replaceActivity(std::make_unique<HtmlReaderActivity>(renderer, mappedInput, std::move(wa)));
 }
 
 void ReaderActivity::onEnter() {

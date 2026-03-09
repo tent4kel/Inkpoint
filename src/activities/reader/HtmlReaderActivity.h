@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
-#include "activities/ActivityWithSubactivity.h"
+#include "activities/Activity.h"
 
 class Page;
 
@@ -19,7 +19,7 @@ class Page;
  * Uses ChapterHtmlSlimParser (EPUB pipeline) for full hyphenation and justified text.
  * Mirrors MdReaderActivity in structure: FreeRTOS display task + section cache.
  */
-class HtmlReaderActivity final : public ActivityWithSubactivity {
+class HtmlReaderActivity final : public Activity {
   std::unique_ptr<WebArticle> wa;
   TaskHandle_t displayTaskHandle = nullptr;
   SemaphoreHandle_t renderingMutex = nullptr;
@@ -28,11 +28,6 @@ class HtmlReaderActivity final : public ActivityWithSubactivity {
   int pagesUntilFullRefresh = 0;
   bool updateRequired = false;
   bool initialized = false;
-  bool endActionsVisible = false;
-  const std::function<void()> onGoBack;
-  const std::function<void()> onGoHome;
-  const std::function<void()> onAdvanceArticle;    // nullable: last page + next → open next article
-  const std::function<void()> onDeleteAndAdvance;  // nullable: last page + confirm → delete + open next
 
   std::string sectionFilePath;
   std::vector<uint32_t> pageLut;
@@ -46,7 +41,7 @@ class HtmlReaderActivity final : public ActivityWithSubactivity {
   void renderScreen();
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
-  void renderStatusBar(int orientedMarginRight, int orientedMarginBottom, int orientedMarginLeft);
+  void renderStatusBar() const;
 
   void initializeReader();
   bool loadSectionCache(int fontId, float lineCompression, bool extraParagraphSpacing, uint8_t paragraphAlignment,
@@ -59,16 +54,8 @@ class HtmlReaderActivity final : public ActivityWithSubactivity {
 
  public:
   explicit HtmlReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                              std::unique_ptr<WebArticle> wa, const std::function<void()>& onGoBack,
-                              const std::function<void()>& onGoHome,
-                              std::function<void()> onAdvanceArticle = nullptr,
-                              std::function<void()> onDeleteAndAdvance = nullptr)
-      : ActivityWithSubactivity("HtmlReader", renderer, mappedInput),
-        wa(std::move(wa)),
-        onGoBack(onGoBack),
-        onGoHome(onGoHome),
-        onAdvanceArticle(std::move(onAdvanceArticle)),
-        onDeleteAndAdvance(std::move(onDeleteAndAdvance)) {}
+                              std::unique_ptr<WebArticle> wa)
+      : Activity("HtmlReader", renderer, mappedInput), wa(std::move(wa)) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

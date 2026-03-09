@@ -304,7 +304,7 @@ void setup() {
   if (rtcGoToInstapaper) {
     rtcGoToInstapaper = false;
     LOG_INF("MAIN", "Boot routing: → Instapaper (force-sync restart)");
-    onGoToInstapaper();
+    activityManager.goToInstapaper();
   // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
   // crashed (indicated by readerActivityLoadCount > 0)
   } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||

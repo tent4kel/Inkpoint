@@ -24,8 +24,6 @@
 
 namespace {
 constexpr unsigned long goHomeMs = 1000;
-constexpr int statusBarMargin = 25;
-constexpr int progressBarMarginTop = 1;
 
 struct ArticleMeta {
   std::string title;
@@ -487,7 +485,7 @@ void HtmlReaderActivity::taskTrampoline(void* param) {
 }
 
 void HtmlReaderActivity::onEnter() {
-  ActivityWithSubactivity::onEnter();
+  Activity::onEnter();
 
   if (!wa) {
     return;
@@ -530,7 +528,7 @@ void HtmlReaderActivity::onEnter() {
 }
 
 void HtmlReaderActivity::onExit() {
-  ActivityWithSubactivity::onExit();
+  Activity::onExit();
 
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
 
@@ -548,11 +546,6 @@ void HtmlReaderActivity::onExit() {
 }
 
 void HtmlReaderActivity::loop() {
-  if (subActivity) {
-    subActivity->loop();
-    return;
-  }
-
   const bool usePressForPageTurn = !SETTINGS.longPressChapterSkip;
   const bool prevTriggered = usePressForPageTurn ? (mappedInput.wasPressed(MappedInputManager::Button::PageBack) ||
                                                     mappedInput.wasPressed(MappedInputManager::Button::Left))
@@ -566,51 +559,17 @@ void HtmlReaderActivity::loop() {
                                  : (mappedInput.wasReleased(MappedInputManager::Button::PageForward) || powerPageTurn ||
                                     mappedInput.wasReleased(MappedInputManager::Button::Right));
 
-  // End-action overlay: shown after reaching last page and pressing next once more.
-  // Buttons are remapped: Back=List, Confirm=Delete, Prev=prev page, Next=next article.
-  if (endActionsVisible) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-        (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= goHomeMs)) {
-      endActionsVisible = false;
-      onGoBack();
-      return;
-    }
-    if (onDeleteAndAdvance && mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      onDeleteAndAdvance();
-      return;
-    }
-    if (prevTriggered && currentPage > 0) {
-      currentPage--;
-      endActionsVisible = false;
-      updateRequired = true;
-      return;
-    }
-    if (onAdvanceArticle && nextTriggered) {
-      onAdvanceArticle();
-      return;
-    }
-    return;  // eat all other input while overlay is shown
-  }
-
   if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= goHomeMs) {
     onGoHome();
     return;
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() < goHomeMs) {
-    onGoBack();
+    activityManager.goToFileBrowser(wa ? wa->getPath() : "");
     return;
   }
 
   if (!prevTriggered && !nextTriggered) {
-    return;
-  }
-
-  // On last page + next → show end-action overlay (if article callbacks present)
-  const bool onLastPage = initialized && totalPages > 0 && currentPage == totalPages - 1;
-  if (onLastPage && (onAdvanceArticle || onDeleteAndAdvance) && nextTriggered) {
-    endActionsVisible = true;
-    updateRequired = true;
     return;
   }
 
@@ -657,15 +616,7 @@ void HtmlReaderActivity::initializeReader() {
   orientedMarginRight += cachedScreenMargin;
   orientedMarginBottom += cachedScreenMargin;
 
-  auto metrics = UITheme::getInstance().getMetrics();
-
-  if (SETTINGS.statusBar != CrossPointSettings::STATUS_BAR_MODE::NONE) {
-    const bool showProgressBar = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR ||
-                                 SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::ONLY_BOOK_PROGRESS_BAR ||
-                                 SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
-    orientedMarginBottom += statusBarMargin - cachedScreenMargin +
-                            (showProgressBar ? (metrics.progressBarHeight + progressBarMarginTop) : 0);
-  }
+  orientedMarginBottom += std::max(cachedScreenMargin, static_cast<int>(UITheme::getStatusBarHeight()));
 
   const uint16_t viewportWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
   const uint16_t viewportHeight = renderer.getScreenHeight() - orientedMarginTop - orientedMarginBottom;
@@ -855,6 +806,7 @@ bool HtmlReaderActivity::createSectionCache(const int fontId, const float lineCo
       false,  // embeddedStyle — no external CSS for web articles
       "",     // contentBase — images skipped (epub=null)
       "",     // imageBasePath — images skipped
+      0,      // imageRendering — images skipped
       [this]() { GUI.drawPopup(renderer, "Indexing..."); });
 
   const bool parseOk = parser.parseAndBuildPages();
@@ -922,14 +874,7 @@ void HtmlReaderActivity::renderScreen() {
   orientedMarginRight += cachedScreenMargin;
   orientedMarginBottom += cachedScreenMargin;
 
-  auto metrics = UITheme::getInstance().getMetrics();
-  if (SETTINGS.statusBar != CrossPointSettings::STATUS_BAR_MODE::NONE) {
-    const bool showProgressBar = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR ||
-                                 SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::ONLY_BOOK_PROGRESS_BAR ||
-                                 SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
-    orientedMarginBottom += statusBarMargin - cachedScreenMargin +
-                            (showProgressBar ? (metrics.progressBarHeight + progressBarMarginTop) : 0);
-  }
+  orientedMarginBottom += std::max(cachedScreenMargin, static_cast<int>(UITheme::getStatusBarHeight()));
 
   auto page = loadPageFromCache(currentPage);
   if (!page) {
@@ -949,7 +894,7 @@ void HtmlReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                                         const int orientedMarginRight, const int orientedMarginBottom,
                                         const int orientedMarginLeft) {
   page->render(renderer, cachedFontId, orientedMarginLeft, orientedMarginTop);
-  renderStatusBar(orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+  renderStatusBar();
 
   if (pagesUntilFullRefresh <= 1) {
     renderer.displayBuffer(HalDisplay::HALF_REFRESH);
@@ -977,16 +922,7 @@ void HtmlReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   }
 }
 
-void HtmlReaderActivity::renderStatusBar(const int /*orientedMarginRight*/, const int /*orientedMarginBottom*/,
-                                         const int /*orientedMarginLeft*/) {
-  if (endActionsVisible) {
-    const char* prevLabel    = currentPage > 0       ? tr(STR_PREV_PAGE)    : "";
-    const char* nextLabel    = onAdvanceArticle       ? tr(STR_NEXT_ARTICLE) : "";
-    const char* deleteLabel  = onDeleteAndAdvance     ? tr(STR_DELETE)       : "";
-    const auto labels = mappedInput.mapLabels(tr(STR_ARTICLE_LIST), deleteLabel, prevLabel, nextLabel);
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-    return;
-  }
+void HtmlReaderActivity::renderStatusBar() const {
   const float progress = totalPages > 0 ? (currentPage + 1) * 100.0f / totalPages : 0;
   const std::string title = wa->getTitle();
   GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title);

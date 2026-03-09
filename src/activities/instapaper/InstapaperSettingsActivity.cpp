@@ -64,7 +64,7 @@ void InstapaperSettingsActivity::handleSelection() {
       bool cur = INSTAPAPER_STORE.getArchiveOldArticles();
       INSTAPAPER_STORE.setArchiveOldArticles(!cur);
       INSTAPAPER_STORE.saveToFile();
-      updateRequired = true;
+      requestUpdate();
     } else if (selectedIndex == 1) {
       INSTAPAPER_STORE.clearCredentials();
       selectedIndex = 0;
