@@ -32,8 +32,6 @@ void AnkiDeckExplorerActivity::onEnter() {
   scanning = false;
   statusMessage.clear();
 
-  ANKI_SESSION.resetSessionBump();
-
   loadDeckIndex();
   refreshDueCounts();
 
