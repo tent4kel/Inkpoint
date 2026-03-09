@@ -16,6 +16,7 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "InstapaperCredentialStore.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
@@ -27,6 +28,10 @@
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
 #include "util/StringUtils.h"
+
+// Survives ESP.restart() but not power-off. Set by InstapaperActivity's
+// force-sync action to skip Home and re-enter Instapaper after reboot.
+RTC_DATA_ATTR bool rtcGoToInstapaper = false;
 
 HalDisplay display;
 HalGPIO gpio;
@@ -260,6 +265,7 @@ void setup() {
   I18N.loadSettings();
   KOREADER_STORE.loadFromFile();
   ANKI_SESSION.load();
+  INSTAPAPER_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
@@ -291,9 +297,19 @@ void setup() {
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
 
+  // Force-sync restart from InstapaperActivity: skip Home and go straight to
+  // Instapaper with a fresh heap. Checked first so it takes priority regardless
+  // of what APP_STATE has saved (e.g. lastSleepFromReader=true from a previous
+  // reading session would otherwise route us to the reader instead).
+  LOG_INF("MAIN", "Boot routing: rtcGoToInstapaper=%d openEpubPath='%s' lastSleepFromReader=%d",
+          (int)rtcGoToInstapaper, APP_STATE.openEpubPath.c_str(), (int)APP_STATE.lastSleepFromReader);
+  if (rtcGoToInstapaper) {
+    rtcGoToInstapaper = false;
+    LOG_INF("MAIN", "Boot routing: → Instapaper (force-sync restart)");
+    activityManager.goToInstapaper();
   // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
   // crashed (indicated by readerActivityLoadCount > 0)
-  if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
+  } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
       mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
     activityManager.goHome();
   } else {

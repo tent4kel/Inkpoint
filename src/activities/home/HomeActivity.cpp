@@ -14,6 +14,7 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "InstapaperCredentialStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
@@ -25,6 +26,9 @@ int HomeActivity::getMenuItemCount() const {
     count += recentBooks.size();
   }
   if (hasOpdsUrl) {
+    count++;
+  }
+  if (hasInstapaper) {
     count++;
   }
   return count;
@@ -112,6 +116,7 @@ void HomeActivity::onEnter() {
 
   // Check if OPDS browser URL is configured
   hasOpdsUrl = strlen(SETTINGS.opdsServerUrl) > 0;
+  hasInstapaper = INSTAPAPER_STORE.hasCredentials();
 
   selectorIndex = 0;
 
@@ -192,6 +197,7 @@ void HomeActivity::loop() {
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
     const int ankiExplorerIdx = idx++;
+    const int instapaperIdx = hasInstapaper ? idx++ : -1;
     const int fileTransferIdx = idx++;
     const int settingsIdx = idx;
 
@@ -205,6 +211,8 @@ void HomeActivity::loop() {
       onOpdsBrowserOpen();
     } else if (menuSelectedIndex == ankiExplorerIdx) {
       onAnkiExplorerOpen();
+    } else if (menuSelectedIndex == instapaperIdx) {
+      onInstapaperOpen();
     } else if (menuSelectedIndex == fileTransferIdx) {
       onFileTransferOpen();
     } else if (menuSelectedIndex == settingsIdx) {
@@ -236,6 +244,11 @@ void HomeActivity::render(RenderLock&&) {
   if (hasOpdsUrl) {
     menuItems.insert(menuItems.begin() + insertPos, tr(STR_OPDS_BROWSER));
     menuIcons.insert(menuIcons.begin() + insertPos, Library);
+    insertPos++;
+  }
+  if (hasInstapaper) {
+    menuItems.insert(menuItems.begin() + insertPos, tr(STR_INSTAPAPER));
+    menuIcons.insert(menuIcons.begin() + insertPos, Newspaper);
     insertPos++;
   }
   menuItems.insert(menuItems.begin() + insertPos, "Flashcards");
@@ -278,3 +291,5 @@ void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
 void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
 
 void HomeActivity::onAnkiExplorerOpen() { activityManager.goToAnkiExplorer(); }
+
+void HomeActivity::onInstapaperOpen() { activityManager.goToInstapaper(); }

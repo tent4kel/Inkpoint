@@ -8,6 +8,7 @@ class Epub;
 class Xtc;
 class Txt;
 class Markdown;
+class WebArticle;
 
 class ReaderActivity final : public Activity {
   std::string initialBookPath;
@@ -16,10 +17,12 @@ class ReaderActivity final : public Activity {
   static std::unique_ptr<Xtc> loadXtc(const std::string& path);
   static std::unique_ptr<Txt> loadTxt(const std::string& path);
   static std::unique_ptr<Markdown> loadMarkdown(const std::string& path);
+  static std::unique_ptr<WebArticle> loadWebArticle(const std::string& path);
   static bool isXtcFile(const std::string& path);
   static bool isTxtFile(const std::string& path);
   static bool isBmpFile(const std::string& path);
   static bool isMdFile(const std::string& path);
+  static bool isHtmlFile(const std::string& path);
 
   static std::string extractFolderPath(const std::string& filePath);
   void goToLibrary(const std::string& fromBookPath = "");
@@ -28,6 +31,7 @@ class ReaderActivity final : public Activity {
   void onGoToTxtReader(std::unique_ptr<Txt> txt);
   void onGoToBmpViewer(const std::string& path);
   void onGoToMdReader(std::unique_ptr<Markdown> md);
+  void onGoToHtmlReader(std::unique_ptr<WebArticle> wa);
 
   void onGoBack();
 

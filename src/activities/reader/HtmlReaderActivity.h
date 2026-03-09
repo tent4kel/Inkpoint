@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Markdown.h>
+#include <WebArticle.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -14,14 +14,13 @@
 class Page;
 
 /**
- * MdReaderActivity - Reader for Markdown files with styled rendering.
+ * HtmlReaderActivity - Reader for HTML article files (e.g. saved Instapaper articles).
  *
- * Follows the same structure as TxtReaderActivity (FreeRTOS display task,
- * input handling, status bar) but renders using cached Pages built by
- * MarkdownParser instead of plain text lines. Single "section" (the whole file).
+ * Uses ChapterHtmlSlimParser (EPUB pipeline) for full hyphenation and justified text.
+ * Mirrors MdReaderActivity in structure: FreeRTOS display task + section cache.
  */
-class MdReaderActivity final : public Activity {
-  std::unique_ptr<Markdown> md;
+class HtmlReaderActivity final : public Activity {
+  std::unique_ptr<WebArticle> wa;
   TaskHandle_t displayTaskHandle = nullptr;
   SemaphoreHandle_t renderingMutex = nullptr;
   int currentPage = 0;
@@ -30,11 +29,9 @@ class MdReaderActivity final : public Activity {
   bool updateRequired = false;
   bool initialized = false;
 
-  // Cache file for rendered pages (section.bin style)
   std::string sectionFilePath;
-  std::vector<uint32_t> pageLut;  // Page offsets in section file
+  std::vector<uint32_t> pageLut;
 
-  // Cached settings for cache validation
   int cachedFontId = 0;
   int cachedScreenMargin = 0;
   uint8_t cachedParagraphAlignment = CrossPointSettings::LEFT_ALIGN;
@@ -56,9 +53,11 @@ class MdReaderActivity final : public Activity {
   void loadProgress();
 
  public:
-  explicit MdReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Markdown> md)
-      : Activity("MdReader", renderer, mappedInput), md(std::move(md)) {}
+  explicit HtmlReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                              std::unique_ptr<WebArticle> wa)
+      : Activity("HtmlReader", renderer, mappedInput), wa(std::move(wa)) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;
+  bool isReaderActivity() const override { return true; }
 };
