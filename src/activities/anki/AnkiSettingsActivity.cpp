@@ -19,21 +19,14 @@ const StrId kGoalLabels[] = {StrId::STR_GOAL_5, StrId::STR_GOAL_10, StrId::STR_G
 }  // namespace
 
 void AnkiSettingsActivity::onEnter() {
-  ActivityWithSubactivity::onEnter();
+  Activity::onEnter();
   selectedIndex = 0;
   requestUpdate();
 }
 
-void AnkiSettingsActivity::onExit() { ActivityWithSubactivity::onExit(); }
-
 void AnkiSettingsActivity::loop() {
-  if (subActivity) {
-    subActivity->loop();
-    return;
-  }
-
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    onBack();
+    finish();
     return;
   }
 
@@ -63,7 +56,7 @@ void AnkiSettingsActivity::handleSelection() {
   requestUpdate();
 }
 
-void AnkiSettingsActivity::render(Activity::RenderLock&&) {
+void AnkiSettingsActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
   const auto& metrics = UITheme::getInstance().getMetrics();

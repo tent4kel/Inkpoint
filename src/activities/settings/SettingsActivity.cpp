@@ -178,7 +178,7 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResult(std::make_unique<CalibreSettingsActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::AnkiSettings:
-        enterSubActivity(new AnkiSettingsActivity(renderer, mappedInput, onComplete));
+        startActivityForResult(std::make_unique<AnkiSettingsActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::Network:
         startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);

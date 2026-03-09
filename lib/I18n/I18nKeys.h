@@ -402,6 +402,14 @@ enum class StrId : uint16_t {
   STR_GOAL_20,
   STR_GOAL_30,
   STR_GOAL_50,
+  STR_ANKI,
+  STR_ANKI_POOL_SIZE,
+  STR_LEARNING_STACK_LIMIT,
+  STR_POOL_10,
+  STR_POOL_20,
+  STR_POOL_30,
+  STR_POOL_50,
+  STR_POOL_UNLIMITED,
   // Sentinel - must be last
   _COUNT
 };
