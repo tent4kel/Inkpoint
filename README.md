@@ -19,6 +19,7 @@ Xteink firmware. It aims to match or improve upon the standard EPUB reading expe
 
 This is my personal fork to bring some features I wanted to the device. The code was created with heavy usage of AI / Claude. 
 
+
 ### Anki Flashcards
 
 A full flashcard study system using a session-based SM-2 spaced repetition algorithm.
@@ -26,8 +27,8 @@ Cards are stored as CSV files on the SD card and can be edited on-device or mana
 
 - SM-2 scheduling: cards are rated after each review and rescheduled accordingly
 - Session goals: Device does not have a clock so we assume doing your goal equals a day.
-- Overall progress view per deck (total cards, due, review counts)
-- Cards rendered with Markdown formatting (bold, italic, lists)
+- Overall progress view per deck (total cards, due)
+- Cards rendered with Markdown formatting (bold, italic, numbered lists, bullet point lists, horizontal dividing line)
 - Configurable font size and front/back swap per deck
 - Study-ahead mode to review cards before they are technically due
 - Deck browser sorted by due count, last opened, or name
@@ -35,22 +36,23 @@ Cards are stored as CSV files on the SD card and can be edited on-device or mana
 - CSV import and export — decks are plain `.csv` files; the app reads and writes them directly, making it easy to
   manage cards in any spreadsheet tool or text editor
 - Support for comma and tab delimited csv/tsv. Pasting from excel works.
+- try out editor here: https://tent4kel.github.io/Inkpoint/
+
 
 ### Instapaper
 
-Save and read Instapaper articles on the device. Articles are downloaded as HTML and rendered through the built-in HTML
+Save and read Instapaper articles on the device. Articles are downloaded as HTML and rendered through our built-in HTML
 reader with full hyphenation and justification.
 
 - OAuth authentication (user tokens stored obfuscated on SD card)
-- Syncing and caching last 30 bookmarks, option to move older downloaded articles to archive or delete automatically.
-- Queuing for download, 
+- Syncing and caching last 20 bookmarks, option to move older downloaded articles to archive or delete automatically.
+- Manual sync button option that cleans memory to make sure TLS handshake can be done with the 380kb of RAM.
+- Queuing for download 
 - Archive and delete articles from within the reader
 - Language auto-detection for correct hyphenation rules
 - Reading progress cached to SD card per article, caches emptied when articles are deleted.
 
 ### Web File Manager
-
-Upload files to the device over Wi-Fi from any browser — no cables required beyond the initial flash.
 
 - Addition: show hidden.
 
