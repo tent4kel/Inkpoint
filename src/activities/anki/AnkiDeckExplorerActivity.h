@@ -31,6 +31,7 @@ class AnkiDeckExplorerActivity final : public Activity {
   void onEnter() override;
   void onExit() override;
   void loop() override;
+  void render(RenderLock&&) override { updateRequired = true; }
 
  private:
   TaskHandle_t displayTaskHandle = nullptr;
