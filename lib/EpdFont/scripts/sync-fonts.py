@@ -31,7 +31,7 @@ MAIN_CPP_PATH       = os.path.join(REPO_ROOT, "src/main.cpp")
 SETTINGS_CPP_PATH   = os.path.join(REPO_ROOT, "src/CrossPointSettings.cpp")
 
 STYLE_ORDER = ["regular", "bold", "italic", "bolditalic"]
-TIER_ENUMS  = ["FONT_S", "FONT_M", "FONT_L", "FONT_XL"]
+TIER_ENUMS  = ["TINY", "SMALL", "MEDIUM", "EXTRA_LARGE"]
 FONT_SIZE_COUNT = 4
 
 

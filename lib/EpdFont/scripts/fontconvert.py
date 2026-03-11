@@ -297,7 +297,8 @@ for i_start, i_end in intervals:
         glyph = GlyphProps(
             width = bitmap.width,
             height = bitmap.rows,
-            advance_x = max(0, norm_floor(face.glyph.advance.x)),
+            # advance.x (26.6 fixed-point, grid-fitted to whole pixels by hinter)
+            advance_x = fp4_from_ft16_16(face.glyph.linearHoriAdvance),
             left = face.glyph.bitmap_left,
             top = face.glyph.bitmap_top,
             data_length = len(packed),

@@ -26,7 +26,7 @@
         "regular":    "../builtinFonts/source/ChareInk/ChareInk7SP-Regular.ttf",
         "bold":       "../builtinFonts/source/ChareInk/ChareInk7SP-Bold.ttf",
         "italic":     "../builtinFonts/source/ChareInk/ChareInk7SP-Italic.ttf",
-        "bolditalic": "../builtinFonts/source/ChareInk/ChareInk7SP-BoldItalic.ttf"
+        "bolditalic": "../builtinFonts/source/ChareInk/ChareInk7SPWT-BoldItalic.ttf"
       },
       "sizes": [
         { "size": 11, "force_autohint": true },
