@@ -194,9 +194,11 @@ bool InstapaperClient::listBookmarks(int limit, std::vector<InstapaperBookmark>&
   std::string body = buildBody(params);
   std::string response;
 
-  // 24 KB cap: 30 bookmarks × ~600 bytes JSON each ≈ 18 KB. Hard cap prevents
-  // unbounded reallocation on the heap.
-  constexpr size_t MAX_BOOKMARK_LIST = 24576;
+  // 16 KB cap: 20 bookmarks × ~700 bytes JSON each ≈ 14 KB. Hard cap prevents
+  // unbounded reallocation on the heap. Kept small: this buffer is reserved
+  // BEFORE the TLS context is created; every extra KB here is a KB denied to
+  // mbedTLS, which needs ~57 KB of contiguous heap for its context + I/O buffers.
+  constexpr size_t MAX_BOOKMARK_LIST = 16384;
   // Single attempt only: TLS drains ~80 KB of heap during the handshake.
   // After a failure the heap remains fragmented; retrying on a fragmented
   // heap causes progressive OOM.  s_everSynced prevents re-entry on this

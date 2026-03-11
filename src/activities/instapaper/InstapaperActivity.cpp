@@ -492,7 +492,7 @@ void InstapaperActivity::backgroundSyncWork() {
   updateRequired = true;
   LOG_INF("INS", "Fetch: start — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   std::vector<InstapaperBookmark> apiBookmarks;
-  if (!InstapaperClient::listBookmarks(30, apiBookmarks)) {
+  if (!InstapaperClient::listBookmarks(20, apiBookmarks)) {
     LOG_ERR("INS", "Fetch: failed — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     syncStatus = tr(STR_FETCH_FAILED);
     syncComplete = true;
