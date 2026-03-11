@@ -16,10 +16,11 @@
 #include "util/UrlUtils.h"
 
 // Minimum contiguous block required before attempting a TLS connection.
-// mbedTLS context + record buffers typically consume 25-40 KB.  If the heap
-// is more fragmented than this the allocation would either fail (nothrow) or
-// succeed and leave too little room for the response buffer + other tasks,
-// resulting in MinFree < 2 KB and a frozen device.
+// mbedTLS context + record buffers consume ~34 KB. 50 KB gives ~16 KB of margin
+// for stack and other small allocations during a streaming download.
+// Note: listBookmarks additionally pre-allocates a 16 KB response buffer, so it
+// needs ~50 KB on top of this. That path is guarded separately in
+// backgroundSyncWork (65 KB check) before WiFi is even started.
 static constexpr uint32_t TLS_MIN_HEAP = 50000;
 
 static bool hasTlsHeap() {
