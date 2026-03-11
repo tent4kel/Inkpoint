@@ -386,7 +386,6 @@ void InstapaperActivity::startBackgroundSync() {
   }
 
   syncing = true;
-  syncStatus = tr(STR_SYNCING);
   updateRequired = true;
   xTaskCreate(&InstapaperActivity::syncTaskTrampoline, "InstaSync", 8192, this, 1, &syncTaskHandle);
 }
@@ -480,7 +479,7 @@ void InstapaperActivity::backgroundSyncWork() {
   if (s_everSynced) {
     LOG_INF("INS", "Fetch: skip — already synced this boot (free=%u maxAlloc=%u)",
             ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    syncStatus = std::string(tr(STR_SYNCED)) + " (" + std::to_string(displayList.size()) + ")";
+    syncStatus = std::to_string(displayList.size()) + tr(STR_CACHED_BOOKMARKS);
     syncComplete = true;
     updateRequired = true;
     return;
@@ -596,7 +595,7 @@ void InstapaperActivity::backgroundSyncWork() {
       return a.time > b.time;
     });
 
-    syncStatus = std::string(tr(STR_SYNCED)) + " (" + std::to_string(displayList.size()) + ")";
+    syncStatus = std::to_string(displayList.size()) + tr(STR_SYNCED_BOOKMARKS);
     syncComplete = true;
     updateRequired = true;
     saveBookmarkCache();
