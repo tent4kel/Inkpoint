@@ -773,12 +773,11 @@ void InstapaperActivity::render() const {
   const auto pageHeight = renderer.getScreenHeight();
   const auto metrics = UITheme::getInstance().getMetrics();
 
-  // Header with sync status
-  std::string title = tr(STR_INSTAPAPER);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_INSTAPAPER));
   if (!syncStatus.empty()) {
-    title += " [" + syncStatus + "]";
+    const int statusX = pageWidth - metrics.contentSidePadding * 2 + 10 - renderer.getTextWidth(UI_10_FONT_ID, syncStatus.c_str());
+    renderer.drawText(UI_10_FONT_ID, statusX, metrics.topPadding + metrics.batteryBarHeight + 8, syncStatus.c_str());
   }
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title.c_str());
 
   if (state == State::ERROR) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 20, tr(STR_ERROR_MSG));

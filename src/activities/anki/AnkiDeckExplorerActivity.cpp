@@ -315,14 +315,17 @@ void AnkiDeckExplorerActivity::render() const {
   auto metrics = UITheme::getInstance().getMetrics();
 
   // Header
-  std::string title = "Flashcards";
-  if (!statusMessage.empty()) {
-    title += " [" + statusMessage + "]";
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Flashcards");
+  {
+    char statusBuf[48];
+    if (!statusMessage.empty()) {
+      snprintf(statusBuf, sizeof(statusBuf), "%s  S%u", statusMessage.c_str(), ANKI_SESSION.getSession());
+    } else {
+      snprintf(statusBuf, sizeof(statusBuf), "S%u", ANKI_SESSION.getSession());
+    }
+    const int statusX = pageWidth - metrics.contentSidePadding * 2 + 10 - renderer.getTextWidth(UI_10_FONT_ID, statusBuf);
+    renderer.drawText(UI_10_FONT_ID, statusX, metrics.topPadding + metrics.batteryBarHeight + 8, statusBuf);
   }
-  char sessionBuf[32];
-  snprintf(sessionBuf, sizeof(sessionBuf), " S%u", ANKI_SESSION.getSession());
-  title += sessionBuf;
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title.c_str());
 
   // Button hints
   char sortLabel[16];
