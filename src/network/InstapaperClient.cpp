@@ -197,12 +197,11 @@ bool InstapaperClient::listBookmarks(int limit, std::vector<InstapaperBookmark>&
   // 24 KB cap: 30 bookmarks × ~600 bytes JSON each ≈ 18 KB. Hard cap prevents
   // unbounded reallocation on the heap.
   constexpr size_t MAX_BOOKMARK_LIST = 24576;
-  // Allow up to 3 attempts.  The first TLS connection after a fresh WiFi
-  // bring-up often times out (~8 s) because DNS, ARP, and the TCP stack are
-  // cold.  Subsequent attempts reuse cached DNS/ARP and succeed quickly.
-  // With a clean single-on/off WiFi lifecycle the heap is not fragmented
-  // between retries, so a fresh TLS context is safe to allocate.
-  bool ok = withRetries([&]() { return HttpDownloader::postUrl(url, body, authHeader, response, MAX_BOOKMARK_LIST); });
+  // Single attempt only: TLS drains ~80 KB of heap during the handshake.
+  // After a failure the heap remains fragmented; retrying on a fragmented
+  // heap causes progressive OOM.  s_everSynced prevents re-entry on this
+  // boot, so a fresh session will retry on the next boot with clean RAM.
+  bool ok = withRetries([&]() { return HttpDownloader::postUrl(url, body, authHeader, response, MAX_BOOKMARK_LIST); }, 1);
   if (!ok) {
     LOG_ERR("IPC", "List bookmarks failed");
     return false;
