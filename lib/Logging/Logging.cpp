@@ -10,7 +10,7 @@ RTC_NOINIT_ATTR char logMessages[MAX_LOG_LINES][MAX_ENTRY_LEN];
 RTC_NOINIT_ATTR size_t logHead = 0;
 
 void addToLogRingBuffer(const char* message) {
-  // Add the message to the ring buffer, overwriting old messages if necessary
+  if (logHead >= MAX_LOG_LINES) logHead = 0;  // sanitize RTC_NOINIT garbage on cold boot
   strncpy(logMessages[logHead], message, MAX_ENTRY_LEN - 1);
   logMessages[logHead][MAX_ENTRY_LEN - 1] = '\0';
   logHead = (logHead + 1) % MAX_LOG_LINES;

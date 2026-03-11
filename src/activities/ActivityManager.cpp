@@ -203,7 +203,7 @@ void ActivityManager::goToAnkiExplorer() {
 
 void ActivityManager::goToAnki(std::string csvPath) {
   replaceActivity(std::make_unique<AnkiActivity>(renderer, mappedInput, std::move(csvPath),
-                                                  [this]() { goHome(); }));
+                                                  [this]() { goToAnkiExplorer(); }));
 }
 
 void ActivityManager::goToSleep() {
