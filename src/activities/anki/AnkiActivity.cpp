@@ -247,22 +247,26 @@ void AnkiActivity::loop() {
     if (mappedInput.isPressed(MappedInputManager::Button::Down) &&
         mappedInput.getHeldTime() >= LONG_PRESS_MS && !longPressHandled) {
       longPressHandled = true;
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
       toggleOrientation();
       if (deck->currentCard()) {
         buildCardPages(state == State::FRONT ? frontContent() : backContent());
         currentCardPage = 0;
       }
+      xSemaphoreGive(renderingMutex);
       updateRequired = true;
       return;
     }
     // Short press: cycle font size (fires on release)
     if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
       if (!longPressHandled) {
+        xSemaphoreTake(renderingMutex, portMAX_DELAY);
         cycleFontSize();
         if (deck->currentCard()) {
           buildCardPages(state == State::FRONT ? frontContent() : backContent());
           currentCardPage = 0;
         }
+        xSemaphoreGive(renderingMutex);
         updateRequired = true;
       }
       longPressHandled = false;
