@@ -10,6 +10,7 @@
 
 #include "CrossPointSettings.h"
 #include "activities/Activity.h"
+#include <functional>
 
 class Page;
 
@@ -21,6 +22,7 @@ class Page;
  */
 class HtmlReaderActivity final : public Activity {
   std::unique_ptr<WebArticle> wa;
+  std::function<void()> onBack;
   TaskHandle_t displayTaskHandle = nullptr;
   SemaphoreHandle_t renderingMutex = nullptr;
   int currentPage = 0;
@@ -54,8 +56,8 @@ class HtmlReaderActivity final : public Activity {
 
  public:
   explicit HtmlReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                              std::unique_ptr<WebArticle> wa)
-      : Activity("HtmlReader", renderer, mappedInput), wa(std::move(wa)) {}
+                              std::unique_ptr<WebArticle> wa, std::function<void()> onBack)
+      : Activity("HtmlReader", renderer, mappedInput), wa(std::move(wa)), onBack(std::move(onBack)) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

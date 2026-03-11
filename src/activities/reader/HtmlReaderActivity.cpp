@@ -565,7 +565,7 @@ void HtmlReaderActivity::loop() {
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() < goHomeMs) {
-    activityManager.goToFileBrowser(wa ? wa->getPath() : "");
+    onBack();
     return;
   }
 

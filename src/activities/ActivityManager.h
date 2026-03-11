@@ -83,11 +83,12 @@ class ActivityManager {
   void goToRecentBooks();
   void goToBrowser();
   void goToInstapaper();
+  void goToInstapaperArticle(std::string path);
   void goToReader(std::string path);
   void goToAnkiExplorer();
   void goToAnki(std::string csvPath);
   void goToSleep();
-  void goToBoot();
+  void goToBoot(const char* subtitle = nullptr);
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   void goHome();
 

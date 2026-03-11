@@ -8,6 +8,9 @@
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "instapaper/InstapaperActivity.h"
+#include "reader/HtmlReaderActivity.h"
+#include <InstapaperCredentialStore.h>
+#include <WebArticle.h>
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "home/RecentBooksActivity.h"
@@ -189,10 +192,35 @@ void ActivityManager::goToInstapaper() {
   replaceActivity(std::make_unique<InstapaperActivity>(renderer, mappedInput));
 }
 
+void ActivityManager::goToInstapaperArticle(std::string path) {
+  if (!Storage.exists(path.c_str())) {
+    LOG_ERR("ACT", "Instapaper article not found: %s", path.c_str());
+    goToInstapaper();
+    return;
+  }
+  auto wa = std::unique_ptr<WebArticle>(new WebArticle(path, "/.crosspoint"));
+  if (!wa->load()) {
+    LOG_ERR("ACT", "Failed to load Instapaper article: %s", path.c_str());
+    goToInstapaper();
+    return;
+  }
+  replaceActivity(std::make_unique<HtmlReaderActivity>(renderer, mappedInput, std::move(wa),
+                                                       [this]() { goToInstapaper(); }));
+}
+
 void ActivityManager::goToReader(std::string path) {
   if (FsHelpers::checkFileExtension(path, ".csv")) {
     goToAnki(std::move(path));
     return;
+  }
+  // Restore Instapaper articles (e.g. from deep-sleep) to the Instapaper back stack
+  if (FsHelpers::checkFileExtension(path, ".html")) {
+    const auto& instapaperFolder = INSTAPAPER_STORE.getDownloadFolder();
+    if (path.size() > instapaperFolder.size() &&
+        path.compare(0, instapaperFolder.size(), instapaperFolder) == 0) {
+      goToInstapaperArticle(std::move(path));
+      return;
+    }
   }
   replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path)));
 }
@@ -208,7 +236,7 @@ void ActivityManager::goToAnkiExplorer() {
 
 void ActivityManager::goToAnki(std::string csvPath) {
   replaceActivity(std::make_unique<AnkiActivity>(renderer, mappedInput, std::move(csvPath),
-                                                  [this]() { goHome(); }));
+                                                  [this]() { goToAnkiExplorer(); }));
 }
 
 void ActivityManager::goToSleep() {
@@ -216,7 +244,9 @@ void ActivityManager::goToSleep() {
   loop();  // Important: sleep screen must be rendered immediately, the caller will go to sleep right after this returns
 }
 
-void ActivityManager::goToBoot() { replaceActivity(std::make_unique<BootActivity>(renderer, mappedInput)); }
+void ActivityManager::goToBoot(const char* subtitle) {
+  replaceActivity(std::make_unique<BootActivity>(renderer, mappedInput, subtitle));
+}
 
 void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::Style style) {
   replaceActivity(std::make_unique<FullScreenMessageActivity>(renderer, mappedInput, std::move(message), style));

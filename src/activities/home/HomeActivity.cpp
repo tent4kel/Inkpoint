@@ -196,8 +196,8 @@ void HomeActivity::loop() {
     const int fileBrowserIdx = idx++;
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
-    const int ankiExplorerIdx = idx++;
     const int instapaperIdx = hasInstapaper ? idx++ : -1;
+    const int ankiExplorerIdx = idx++;
     const int fileTransferIdx = idx++;
     const int settingsIdx = idx;
 

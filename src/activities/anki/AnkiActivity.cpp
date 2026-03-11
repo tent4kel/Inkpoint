@@ -42,23 +42,23 @@ int AnkiActivity::getFontIdForAnkiSize() const {
     case CrossPointSettings::BOOKERLY:
     default:
       switch (ankiFontSize) {
-        case 0: return BOOKERLY_12_FONT_ID;
+        case 0: return BOOKERLY_11_FONT_ID;
         case 1: default: return BOOKERLY_14_FONT_ID;
-        case 2: return BOOKERLY_18_FONT_ID;
-        case 3: return BOOKERLY_18_FONT_ID;
+        case 2: return BOOKERLY_17_FONT_ID;
+        case 3: return BOOKERLY_17_FONT_ID;
       }
     case CrossPointSettings::NEWSREADER:
       switch (ankiFontSize) {
-        case 0: return NEWSREADER_13_FONT_ID;
-        case 1: default: return NEWSREADER_13_FONT_ID;
-        case 2: return NEWSREADER_15_FONT_ID;
+        case 0: return NEWSREADER_12_2_FONT_ID;
+        case 1: default: return NEWSREADER_12_2_FONT_ID;
+        case 2: return NEWSREADER_16_FONT_ID;
         case 3: return NEWSREADER_19_FONT_ID;
       }
     case CrossPointSettings::CHAREINK:
       switch (ankiFontSize) {
-        case 0: return CHAREINK_13_FONT_ID;
-        case 1: default: return CHAREINK_13_FONT_ID;
-        case 2: return CHAREINK_15_FONT_ID;
+        case 0: return CHAREINK_11_5_FONT_ID;
+        case 1: default: return CHAREINK_11_5_FONT_ID;
+        case 2: return CHAREINK_16_FONT_ID;
         case 3: return CHAREINK_19_FONT_ID;
       }
   }
