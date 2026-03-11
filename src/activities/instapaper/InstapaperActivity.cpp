@@ -404,6 +404,18 @@ void InstapaperActivity::backgroundSyncWork() {
   }
   if (abortDownload) return;
 
+  // The 2 s grace period above guarantees the cached article list has rendered.
+  // Check heap before starting any network work: if MaxAlloc is too small for a
+  // reliable TLS session, inform the user and stop. The Left button (Sync) triggers
+  // a force-sync reboot that restores a clean heap.
+  if (!s_everSynced && ESP.getMaxAllocHeap() < 65000) {
+    LOG_INF("INS", "Pre-WiFi heap check: maxAlloc=%u < 65000, skipping sync", ESP.getMaxAllocHeap());
+    syncStatus = tr(STR_FETCH_LOW_MEM);
+    syncComplete = true;
+    updateRequired = true;
+    return;
+  }
+
   // Connect WiFi if not already connected
   if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
     syncStatus = tr(STR_CONNECTING);
@@ -642,7 +654,7 @@ void InstapaperActivity::loop() {
       // re-trigger this same modal in an infinite loop.
       if (toOpen >= 0 && toOpen < static_cast<int>(displayList.size()) &&
           displayList[toOpen].downloaded) {
-        activityManager.goToReader(getArticlePath(displayList[toOpen]));
+        activityManager.goToInstapaperArticle(getArticlePath(displayList[toOpen]));
       }
     } else if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
                mappedInput.wasReleased(MappedInputManager::Button::Left)) {
@@ -673,7 +685,8 @@ void InstapaperActivity::loop() {
         // across ESP.restart() (software reset re-initialises .rtc.data).
         // A 1ms timer-wakeup deep sleep gives a clean heap AND preserves the
         // rtcGoToInstapaper flag so setup() routes straight back to Instapaper.
-        LOG_INF("INS", "Force-sync: tasks done, entering deep sleep for clean restart");
+        LOG_INF("INS", "Force-sync: tasks done, saving queue and entering deep sleep");
+        saveQueueFile();
         esp_sleep_enable_timer_wakeup(1000);  // 1 ms
         esp_deep_sleep_start();
       }
@@ -706,6 +719,7 @@ void InstapaperActivity::loop() {
       // then call ESP.restart() — avoiding a hard reset mid-SD-write.
       LOG_INF("INS", "Force-sync: pending restart — dl=%p sync=%p", downloadTaskHandle, syncTaskHandle);
       rtcGoToInstapaper = true;
+      exitingActivity = true;  // re-queue mid-download items (same as Back-button exit)
       abortDownload = true;
       pendingRestart = true;
       updateRequired = true;
@@ -942,7 +956,7 @@ void InstapaperActivity::openArticle(int index) {
       pendingOpenIdx = index;
       updateRequired = true;
     } else {
-      activityManager.goToReader(getArticlePath(bm));
+      activityManager.goToInstapaperArticle(getArticlePath(bm));
     }
     return;
   }
