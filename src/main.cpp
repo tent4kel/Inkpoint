@@ -290,7 +290,7 @@ void setup() {
 
   setupDisplayAndFonts();
 
-  activityManager.goToBoot();
+  activityManager.goToBoot(rtcGoToInstapaper ? tr(STR_INSTAPAPER_PREPARING_SYNC) : nullptr);
 
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();

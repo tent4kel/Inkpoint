@@ -480,7 +480,7 @@ void InstapaperActivity::backgroundSyncWork() {
   if (s_everSynced) {
     LOG_INF("INS", "Fetch: skip — already synced this boot (free=%u maxAlloc=%u)",
             ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    syncStatus = std::string(tr(STR_SYNCED)) + " (" + std::to_string(displayList.size()) + ")";
+    syncStatus = std::to_string(displayList.size()) + " articles · " + tr(STR_SYNC_CACHED);
     syncComplete = true;
     updateRequired = true;
     return;
