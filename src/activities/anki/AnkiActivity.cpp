@@ -435,7 +435,7 @@ void AnkiActivity::buildCardPages(const std::string& mdText) {
 
   MarkdownParser parser(
       md, renderer, cachedFontId,
-      1.0f,   // lineCompression
+      SETTINGS.getReaderLineCompression(),
       false,  // extraParagraphSpacing
       static_cast<uint8_t>(CrossPointSettings::CENTER_ALIGN),
       vpWidth, vpHeight,
