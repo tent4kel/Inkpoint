@@ -38,6 +38,12 @@ class HtmlReaderActivity final : public Activity {
   int cachedScreenMargin = 0;
   uint8_t cachedParagraphAlignment = CrossPointSettings::LEFT_ALIGN;
 
+  bool showEndHints = false;
+  bool showDeleteConfirm = false;
+
+  std::function<void()> onDelete;
+  std::function<void()> onAdvance;
+
   static void taskTrampoline(void* param);
   [[noreturn]] void displayTaskLoop();
   void renderScreen();
@@ -56,8 +62,11 @@ class HtmlReaderActivity final : public Activity {
 
  public:
   explicit HtmlReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                              std::unique_ptr<WebArticle> wa, std::function<void()> onBack)
-      : Activity("HtmlReader", renderer, mappedInput), wa(std::move(wa)), onBack(std::move(onBack)) {}
+                              std::unique_ptr<WebArticle> wa, std::function<void()> onBack,
+                              std::function<void()> onDelete = nullptr,
+                              std::function<void()> onAdvance = nullptr)
+      : Activity("HtmlReader", renderer, mappedInput), wa(std::move(wa)), onBack(std::move(onBack)),
+        onDelete(std::move(onDelete)), onAdvance(std::move(onAdvance)) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;
