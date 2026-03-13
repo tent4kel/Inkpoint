@@ -569,6 +569,34 @@ void HtmlReaderActivity::loop() {
     return;
   }
 
+  // Delete-confirm modal: blocks all other input
+  if (showDeleteConfirm) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      if (onDelete) onDelete();
+    } else if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      showDeleteConfirm = false;
+      updateRequired = true;
+    }
+    return;
+  }
+
+  // End-of-article hint overlay
+  if (showEndHints) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      onBack();
+    } else if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) && onDelete) {
+      showDeleteConfirm = true;
+      updateRequired = true;
+    } else if (nextTriggered && onAdvance) {
+      onAdvance();
+    } else if (prevTriggered) {
+      showEndHints = false;
+      if (currentPage > 0) currentPage--;
+      updateRequired = true;
+    }
+    return;
+  }
+
   if (!prevTriggered && !nextTriggered) {
     return;
   }
@@ -576,9 +604,15 @@ void HtmlReaderActivity::loop() {
   if (prevTriggered && currentPage > 0) {
     currentPage--;
     updateRequired = true;
-  } else if (nextTriggered && currentPage < totalPages - 1) {
-    currentPage++;
-    updateRequired = true;
+  } else if (nextTriggered) {
+    if (currentPage < totalPages - 1) {
+      currentPage++;
+      updateRequired = true;
+    } else if (onBack || onDelete || onAdvance) {
+      // Last page: show end-of-article options
+      showEndHints = true;
+      updateRequired = true;
+    }
   }
 }
 
@@ -894,7 +928,22 @@ void HtmlReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                                         const int orientedMarginRight, const int orientedMarginBottom,
                                         const int orientedMarginLeft) {
   page->render(renderer, cachedFontId, orientedMarginLeft, orientedMarginTop);
-  renderStatusBar();
+
+  if (showDeleteConfirm) {
+    const int cy = renderer.getScreenHeight() / 2;
+    renderer.drawCenteredText(UI_12_FONT_ID, cy - 20, tr(STR_DELETE_ARTICLE_CONFIRM));
+    const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_DELETE), "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  } else if (showEndHints) {
+    const auto labels = mappedInput.mapLabels(
+        tr(STR_BACK),
+        onDelete ? tr(STR_DELETE) : "",
+        tr(STR_PREV_PAGE),
+        onAdvance ? tr(STR_NEXT_ARTICLE) : "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  } else {
+    renderStatusBar();
+  }
 
   if (pagesUntilFullRefresh <= 1) {
     renderer.displayBuffer(HalDisplay::HALF_REFRESH);
@@ -904,7 +953,7 @@ void HtmlReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     pagesUntilFullRefresh--;
   }
 
-  if (SETTINGS.textAntiAliasing && renderer.storeBwBuffer()) {
+  if (SETTINGS.textAntiAliasing && !showEndHints && !showDeleteConfirm && renderer.storeBwBuffer()) {
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
     page->render(renderer, cachedFontId, orientedMarginLeft, orientedMarginTop);

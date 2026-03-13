@@ -20,7 +20,8 @@
 
 // Persistent state across InstapaperActivity instances
 static int  s_savedSelector   = 0;
-static std::string s_pendingOpenPath;  // non-empty → auto-open this article on next enter
+static std::string s_pendingOpenPath;    // non-empty → auto-open this article on next enter
+static std::string s_pendingDeletePath;  // non-empty → delete this article's files on next enter
 // Set after first successful fetch; cleared only by ESP.restart(). Subsequent
 // entries skip listBookmarks (heap too fragmented for 15KB response buffer)
 // and only bring up WiFi for downloads.
@@ -93,6 +94,13 @@ void InstapaperActivity::onEnter() {
   syncing = false;
   syncComplete = false;
   syncStatus.clear();
+
+  // Delete article files requested by reader (set before goToInstapaper() in the onDelete lambda).
+  // Must run before loadCachedArticles() so the deleted file is not scanned as downloaded.
+  if (!s_pendingDeletePath.empty()) {
+    deleteArticleFiles(s_pendingDeletePath);
+    s_pendingDeletePath.clear();
+  }
 
   loadCachedArticles();
   loadBookmarkCache();
@@ -403,11 +411,25 @@ void InstapaperActivity::backgroundSyncWork() {
   }
   if (abortDownload) return;
 
-  // The 2 s grace period above guarantees the cached article list has rendered.
-  // Check heap before starting any network work: if MaxAlloc is too small for a
-  // reliable TLS session, inform the user and stop. The Left button (Sync) triggers
-  // a force-sync reboot that restores a clean heap.
-  if (!s_everSynced && ESP.getMaxAllocHeap() < 65000) {
+  // On re-entries within the same boot session, skip listBookmarks and WiFi
+  // entirely. Each WiFi ON/OFF cycle fragments the heap ~10-15 KB, leaving too
+  // little contiguous memory for the ~15 KB response buffer + TLS handshake.
+  // The cached bookmark list is fresh enough; downloads still proceed via
+  // postUrlToFile (which connects WiFi itself on re-entry).
+  // A force-sync (Left button → ESP.restart()) gives a clean heap again.
+  if (s_everSynced) {
+    LOG_INF("INS", "Fetch: skip — already synced this boot (free=%u maxAlloc=%u)",
+            ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    syncStatus = std::to_string(displayList.size()) + tr(STR_CACHED_BOOKMARKS);
+    syncComplete = true;
+    updateRequired = true;
+    return;
+  }
+
+  // First sync: heap check before WiFi. If MaxAlloc is too small for a
+  // reliable TLS session, inform the user and stop. The Left button (Sync)
+  // triggers a force-sync reboot that restores a clean heap.
+  if (ESP.getMaxAllocHeap() < 65000) {
     LOG_INF("INS", "Pre-WiFi heap check: maxAlloc=%u < 65000, skipping sync", ESP.getMaxAllocHeap());
     syncStatus = tr(STR_FETCH_LOW_MEM);
     syncComplete = true;
@@ -470,20 +492,6 @@ void InstapaperActivity::backgroundSyncWork() {
     LOG_INF("INS", "NTP: already set (t=%lld), skip", (long long)time(nullptr));
   }
 
-  // On re-entries within the same boot session, skip listBookmarks. Each
-  // WiFi ON/OFF cycle fragments the heap ~10-15 KB, leaving too little
-  // contiguous memory for the ~15 KB response buffer + TLS handshake.
-  // The cached bookmark list is fresh enough; downloads still proceed via
-  // postUrlToFile which streams to SD without a large response buffer.
-  // A force-sync (Left button → ESP.restart()) gives a clean heap again.
-  if (s_everSynced) {
-    LOG_INF("INS", "Fetch: skip — already synced this boot (free=%u maxAlloc=%u)",
-            ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    syncStatus = std::to_string(displayList.size()) + tr(STR_CACHED_BOOKMARKS);
-    syncComplete = true;
-    updateRequired = true;
-    return;
-  }
   s_everSynced = true;  // Set before attempt: don't retry fetch on next entry
 
   // Fetch bookmarks from API
@@ -876,7 +884,7 @@ void InstapaperActivity::render() const {
         renderer.drawText(subFont, rightEdge - pctW, textY, pctStr.c_str(), inv);
       } else {
         const char* label = nullptr;
-        if      (bm.downloading) label = tr(STR_CONNECTING);
+        if      (bm.downloading) label = tr(STR_DOWNLOADING);
         else if (bm.queued)      label = tr(STR_QUEUED);
         else if (bm.downloaded)  label = tr(STR_SAVED);
         if (label) {
@@ -954,7 +962,28 @@ void InstapaperActivity::openArticle(int index) {
       pendingOpenIdx = index;
       updateRequired = true;
     } else {
-      activityManager.goToInstapaperArticle(getArticlePath(bm));
+      std::string currentPath = getArticlePath(bm);
+
+      // Find the next downloaded article after this one (displayList is sorted by time desc)
+      std::string nextPath;
+      for (int i = index + 1; i < static_cast<int>(displayList.size()); i++) {
+        if (displayList[i].downloaded) {
+          nextPath = getArticlePath(displayList[i]);
+          break;
+        }
+      }
+
+      auto deleteFn = [currentPath]() {
+        s_pendingDeletePath = currentPath;
+        activityManager.goToInstapaper();
+      };
+      auto advanceFn = [nextPath]() {
+        if (!nextPath.empty()) s_pendingOpenPath = nextPath;
+        activityManager.goToInstapaper();
+      };
+
+      activityManager.goToInstapaperArticle(currentPath, std::move(deleteFn),
+                                             nextPath.empty() ? std::function<void()>{} : std::move(advanceFn));
     }
     return;
   }
@@ -1013,14 +1042,31 @@ void InstapaperActivity::backgroundDownloadWork() {
   }
   if (abortDownload) return;
 
-  // WiFi is owned by the sync task.  After sync completes, the connection
-  // should already be live.  If it is not (sync failed to connect, no
-  // credentials, etc.) downloads cannot proceed — leave the queue intact so
-  // the next session retries, and bail.
+  // Connect WiFi if the sync task didn't (re-entry: s_everSynced=true skips
+  // WiFi in the sync task, so the download task is responsible on re-entries).
   if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
-    LOG_ERR("INS", "Download: WiFi not connected after sync — deferring queue (free=%u maxAlloc=%u)",
-            ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    return;
+    syncStatus = tr(STR_CONNECTING);
+    updateRequired = true;
+    LOG_INF("INS", "Download: connecting WiFi — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    WiFi.mode(WIFI_STA);
+    WiFi.begin();
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 100 && !abortDownload) {
+      vTaskDelay(100 / portTICK_PERIOD_MS);
+      attempts++;
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+      LOG_ERR("INS", "Download: WiFi connect failed after %d ms — deferring queue", attempts * 100);
+      syncStatus = tr(STR_WIFI_CONN_FAILED);
+      updateRequired = true;
+      return;
+    }
+    LOG_INF("INS", "Download: WiFi up in %d ms — free=%u maxAlloc=%u", attempts * 100, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    // Brief pause: routing stack needs a moment after DHCP before DNS works reliably
+    for (int i = 0; i < 5 && !abortDownload; i++) vTaskDelay(100 / portTICK_PERIOD_MS);
+    if (abortDownload) return;
+    syncStatus.clear();
+    updateRequired = true;
   }
   LOG_INF("INS", "Download: WiFi ready — free=%u maxAlloc=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 

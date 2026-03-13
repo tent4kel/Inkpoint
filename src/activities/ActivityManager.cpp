@@ -1,5 +1,6 @@
 #include "ActivityManager.h"
 
+#include <FsHelpers.h>
 #include <HalPowerManager.h>
 
 #include "anki/AnkiActivity.h"
@@ -192,7 +193,9 @@ void ActivityManager::goToInstapaper() {
   replaceActivity(std::make_unique<InstapaperActivity>(renderer, mappedInput));
 }
 
-void ActivityManager::goToInstapaperArticle(std::string path) {
+void ActivityManager::goToInstapaperArticle(std::string path,
+                                             std::function<void()> onDelete,
+                                             std::function<void()> onAdvance) {
   if (!Storage.exists(path.c_str())) {
     LOG_ERR("ACT", "Instapaper article not found: %s", path.c_str());
     goToInstapaper();
@@ -205,7 +208,9 @@ void ActivityManager::goToInstapaperArticle(std::string path) {
     return;
   }
   replaceActivity(std::make_unique<HtmlReaderActivity>(renderer, mappedInput, std::move(wa),
-                                                       [this]() { goToInstapaper(); }));
+                                                       [this]() { goToInstapaper(); },
+                                                       std::move(onDelete),
+                                                       std::move(onAdvance)));
 }
 
 void ActivityManager::goToReader(std::string path) {
