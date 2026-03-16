@@ -324,12 +324,19 @@ void WebDAVHandler::handleGet(WebServer& s) {
   }
 
   String contentType = getMimeType(path);
-  s.setContentLength(file.size());
+  s.setContentLength(CONTENT_LENGTH_UNKNOWN);
   s.send(200, contentType.c_str(), "");
 
-  NetworkClient client = s.client();
-  client.write(file);
+  uint8_t* buf = static_cast<uint8_t*>(malloc(1360));
+  if (buf) {
+    int n;
+    while ((n = file.read(buf, 1360)) > 0) {
+      s.sendContent(reinterpret_cast<const char*>(buf), n);
+    }
+    free(buf);
+  }
   file.close();
+  s.sendContent("");
 }
 
 // ── HEAD ─────────────────────────────────────────────────────────────────────
