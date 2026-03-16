@@ -17,6 +17,8 @@
 
 namespace {
 constexpr unsigned long goHomeMs = 1000;
+constexpr int statusBarMargin = 25;
+constexpr int progressBarMarginTop = 1;
 
 // Section cache file format
 constexpr uint8_t SECTION_FILE_VERSION = 1;
@@ -60,6 +62,11 @@ void MdReaderActivity::onEnter() {
   md->setupCacheDir();
   sectionFilePath = md->getCachePath() + "/section.bin";
 
+  // Store folder path for "go to library" navigation
+  const auto& filePath2 = md->getPath();
+  const auto lastSlash = filePath2.rfind('/');
+  mdFolderPath = (lastSlash != std::string::npos && lastSlash > 0) ? filePath2.substr(0, lastSlash) : "/";
+
   // Save current file as last opened and add to recent books
   auto filePath = md->getPath();
   auto fileName = filePath.substr(filePath.rfind('/') + 1);
@@ -99,13 +106,13 @@ void MdReaderActivity::onExit() {
 void MdReaderActivity::loop() {
   // Long press BACK (1s+) goes to file selection
   if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= goHomeMs) {
-    activityManager.goToFileBrowser(md ? md->getPath() : "");
+    activityManager.goToFileBrowser(mdFolderPath);
     return;
   }
 
   // Short press BACK goes directly to home
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() < goHomeMs) {
-    onGoHome();
+    activityManager.goHome();
     return;
   }
 
@@ -173,8 +180,15 @@ void MdReaderActivity::initializeReader() {
   orientedMarginRight += cachedScreenMargin;
   orientedMarginBottom += cachedScreenMargin;
 
-  orientedMarginBottom +=
-      std::max(cachedScreenMargin, static_cast<int>(UITheme::getStatusBarHeight()));
+  auto metrics = UITheme::getInstance().getMetrics();
+
+  if (SETTINGS.statusBar != CrossPointSettings::STATUS_BAR_MODE::NONE) {
+    const bool showProgressBar = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR ||
+                                 SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::ONLY_BOOK_PROGRESS_BAR ||
+                                 SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
+    orientedMarginBottom += statusBarMargin - cachedScreenMargin +
+                            (showProgressBar ? (metrics.progressBarHeight + progressBarMarginTop) : 0);
+  }
 
   const uint16_t viewportWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
   const uint16_t viewportHeight = renderer.getScreenHeight() - orientedMarginTop - orientedMarginBottom;
@@ -368,8 +382,14 @@ void MdReaderActivity::renderScreen() {
   orientedMarginRight += cachedScreenMargin;
   orientedMarginBottom += cachedScreenMargin;
 
-  orientedMarginBottom +=
-      std::max(cachedScreenMargin, static_cast<int>(UITheme::getStatusBarHeight()));
+  auto metrics = UITheme::getInstance().getMetrics();
+  if (SETTINGS.statusBar != CrossPointSettings::STATUS_BAR_MODE::NONE) {
+    const bool showProgressBar = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR ||
+                                 SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::ONLY_BOOK_PROGRESS_BAR ||
+                                 SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
+    orientedMarginBottom += statusBarMargin - cachedScreenMargin +
+                            (showProgressBar ? (metrics.progressBarHeight + progressBarMarginTop) : 0);
+  }
 
   auto page = loadPageFromCache(currentPage);
   if (!page) {
@@ -389,7 +409,7 @@ void MdReaderActivity::renderContents(std::unique_ptr<Page> page, const int orie
                                       const int orientedMarginRight, const int orientedMarginBottom,
                                       const int orientedMarginLeft) {
   page->render(renderer, cachedFontId, orientedMarginLeft, orientedMarginTop);
-  renderStatusBar();
+  renderStatusBar(orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
 
   if (pagesUntilFullRefresh <= 1) {
     renderer.displayBuffer(HalDisplay::HALF_REFRESH);
@@ -418,12 +438,10 @@ void MdReaderActivity::renderContents(std::unique_ptr<Page> page, const int orie
   }
 }
 
-void MdReaderActivity::renderStatusBar() const {
+void MdReaderActivity::renderStatusBar(const int /*orientedMarginRight*/, const int /*orientedMarginBottom*/,
+                                       const int /*orientedMarginLeft*/) {
   const float progress = totalPages > 0 ? (currentPage + 1) * 100.0f / totalPages : 0;
-  std::string title;
-  if (SETTINGS.statusBarTitle != CrossPointSettings::STATUS_BAR_TITLE::HIDE_TITLE) {
-    title = md->getTitle();
-  }
+  const std::string title = md->getTitle();
   GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title);
 }
 
