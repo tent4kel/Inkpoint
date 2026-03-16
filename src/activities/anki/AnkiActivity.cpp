@@ -247,22 +247,26 @@ void AnkiActivity::loop() {
     if (mappedInput.isPressed(MappedInputManager::Button::Down) &&
         mappedInput.getHeldTime() >= LONG_PRESS_MS && !longPressHandled) {
       longPressHandled = true;
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
       toggleOrientation();
       if (deck->currentCard()) {
         buildCardPages(state == State::FRONT ? frontContent() : backContent());
         currentCardPage = 0;
       }
+      xSemaphoreGive(renderingMutex);
       updateRequired = true;
       return;
     }
     // Short press: cycle font size (fires on release)
     if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
       if (!longPressHandled) {
+        xSemaphoreTake(renderingMutex, portMAX_DELAY);
         cycleFontSize();
         if (deck->currentCard()) {
           buildCardPages(state == State::FRONT ? frontContent() : backContent());
           currentCardPage = 0;
         }
+        xSemaphoreGive(renderingMutex);
         updateRequired = true;
       }
       longPressHandled = false;
@@ -349,8 +353,9 @@ void AnkiActivity::loop() {
       int btn = mappedInput.getPressedFrontButton();
       if (btn >= 0 && btn <= 3) {
         Grade grade = static_cast<Grade>(btn);
-        bool more = deck->gradeCurrentCard(grade);
+        bool more = deck->gradeCurrentCard(grade);  // CSV write, outside mutex
 
+        xSemaphoreTake(renderingMutex, portMAX_DELAY);
         if (more && deck->currentCard()) {
           state = State::FRONT;
           buildCardPages(frontContent());
@@ -371,6 +376,7 @@ void AnkiActivity::loop() {
             inputGuard = true;
           }
         }
+        xSemaphoreGive(renderingMutex);
         updateRequired = true;
       }
       break;
@@ -417,7 +423,7 @@ void AnkiActivity::buildCardPages(const std::string& mdText) {
 
   MarkdownParser parser(
       md, renderer, cachedFontId,
-      1.0f,   // lineCompression
+      SETTINGS.getReaderLineCompression(),
       false,  // extraParagraphSpacing
       static_cast<uint8_t>(CrossPointSettings::CENTER_ALIGN),
       vpWidth, vpHeight,

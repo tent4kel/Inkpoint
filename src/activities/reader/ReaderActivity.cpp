@@ -117,6 +117,7 @@ std::unique_ptr<WebArticle> ReaderActivity::loadWebArticle(const std::string& pa
   return nullptr;
 }
 
+
 void ReaderActivity::goToLibrary(const std::string& fromBookPath) {
   // If coming from a book, start in that book's folder; otherwise start from root
   auto initialPath = fromBookPath.empty() ? "/" : extractFolderPath(fromBookPath);
@@ -160,6 +161,7 @@ void ReaderActivity::onGoToHtmlReader(std::unique_ptr<WebArticle> wa) {
                                                                               ReaderActivity::extractFolderPath(htmlPath));
                                                                         }));
 }
+
 
 void ReaderActivity::onEnter() {
   Activity::onEnter();

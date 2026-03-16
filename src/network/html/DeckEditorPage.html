@@ -916,7 +916,7 @@
   // We tag each history entry with the view name so popstate can re-hydrate.
   // Back button fires history.back(), which triggers popstate — one code path
   // for both browser back and our custom button.
-  history.replaceState({view: 'picker'}, '');
+  history.replaceState({view: 'picker'}, '', location.pathname + location.search);
 
   window.addEventListener('popstate', function(e) {
     var state = e.state || {view: 'picker'};
@@ -930,7 +930,7 @@
       // Re-push the list state so we stay visually on the list while the dialog shows.
       // After re-push the stack looks like: [picker, list(new)] with cursor at list(new).
       // Confirming discard/save calls history.back() again — now isDirty is false so we proceed.
-      history.pushState({view: 'list', path: currentPath}, '');
+      history.pushState({view: 'list', path: currentPath}, '', '#' + encodeURIComponent(currentPath.replace(/^.*\//, '')));
       showDirtyDialog(function(action) {
         if (action === 'save') {
           saveCards(function() { history.back(); });
@@ -940,6 +940,7 @@
         // cancel: do nothing — we're at the re-pushed list state ✓
       });
     } else {
+      history.replaceState({view:'picker'}, '', location.pathname + location.search);
       doShowPicker();
     }
   });
@@ -1093,7 +1094,7 @@
           var idx=parseInt(btn.dataset.i,10);
           btn.addEventListener('click',function(e){
             e.stopPropagation();
-            exportDeck(decks[idx].path, decks[idx].name);
+            exportDeck(decks[idx].path, decks[idx].path.replace(/^.*\//, ''));
           });
         });
         c.querySelectorAll('.deck-del-btn').forEach(function(btn){
@@ -1227,7 +1228,7 @@
     document.getElementById('list-empty').hidden = true;
     document.getElementById('no-results').hidden = true;
     showView('view-list');
-    if(pushHistory !== false) history.pushState({view:'list', path:path}, '');
+    if(pushHistory !== false) history.pushState({view:'list', path:path}, '', '#' + encodeURIComponent(path.replace(/^.*\//, '')));
     fetch('/api/deck?path='+encodeURIComponent(path))
       .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status); return r.text();})
       .then(function(text){
@@ -1559,7 +1560,27 @@
       M + 'D \u00b7 dup &nbsp;&nbsp; ' +
       M + RET + ' \u00b7 new card &nbsp;&nbsp; ';
   })();
-  loadDeckList();
+  // Deep-link: open deck named in URL hash on load (e.g. #MyDeck.csv)
+  (function() {
+    var hash = window.location.hash.slice(1);
+    if (hash) {
+      var name = decodeURIComponent(hash);
+      var path = /\.(csv|tsv)$/i.test(name) ? '/anki/' + name : '/anki/' + name + '.csv';
+      fetch('/api/deck?path=' + encodeURIComponent(path))
+        .then(function(r) {
+          if (!r.ok) throw new Error();
+          openDeck(path, false);
+        })
+        .catch(function() {
+          var alt = path.replace(/\.csv$/i, '.tsv');
+          fetch('/api/deck?path=' + encodeURIComponent(alt))
+            .then(function(r) { if (!r.ok) throw new Error(); openDeck(alt, false); })
+            .catch(function() { loadDeckList(); });
+        });
+    } else {
+      loadDeckList();
+    }
+  })();
 </script>
 </body>
 </html>

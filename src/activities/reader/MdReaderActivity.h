@@ -29,6 +29,7 @@ class MdReaderActivity final : public Activity {
   int pagesUntilFullRefresh = 0;
   bool updateRequired = false;
   bool initialized = false;
+  std::string mdFolderPath;  // folder path for "go to library" navigation
 
   // Cache file for rendered pages (section.bin style)
   std::string sectionFilePath;
@@ -44,7 +45,7 @@ class MdReaderActivity final : public Activity {
   void renderScreen();
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
-  void renderStatusBar() const;
+  void renderStatusBar(int orientedMarginRight, int orientedMarginBottom, int orientedMarginLeft);
 
   void initializeReader();
   bool loadSectionCache(int fontId, float lineCompression, bool extraParagraphSpacing, uint8_t paragraphAlignment,
