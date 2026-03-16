@@ -353,8 +353,9 @@ void AnkiActivity::loop() {
       int btn = mappedInput.getPressedFrontButton();
       if (btn >= 0 && btn <= 3) {
         Grade grade = static_cast<Grade>(btn);
-        bool more = deck->gradeCurrentCard(grade);
+        bool more = deck->gradeCurrentCard(grade);  // CSV write, outside mutex
 
+        xSemaphoreTake(renderingMutex, portMAX_DELAY);
         if (more && deck->currentCard()) {
           state = State::FRONT;
           buildCardPages(frontContent());
@@ -375,6 +376,7 @@ void AnkiActivity::loop() {
             inputGuard = true;
           }
         }
+        xSemaphoreGive(renderingMutex);
         updateRequired = true;
       }
       break;
