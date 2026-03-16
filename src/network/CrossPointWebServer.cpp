@@ -1286,12 +1286,19 @@ void CrossPointWebServer::handleGetDeck() const {
     return;
   }
 
-  server->setContentLength(file.size());
+  server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "text/plain", "");
 
-  WiFiClient client = server->client();
-  client.write(file);
+  uint8_t* buf = static_cast<uint8_t*>(malloc(1360));
+  if (buf) {
+    int n;
+    while ((n = file.read(buf, 1360)) > 0) {
+      server->sendContent(reinterpret_cast<const char*>(buf), n);
+    }
+    free(buf);
+  }
   file.close();
+  server->sendContent("");
   LOG_DBG("WEB", "Served deck: %s", path.c_str());
 }
 
