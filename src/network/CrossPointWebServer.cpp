@@ -1,6 +1,7 @@
 #include "CrossPointWebServer.h"
 
 #include <ArduinoJson.h>
+#include "HttpDownloader.h"
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
@@ -156,6 +157,7 @@ void CrossPointWebServer::begin() {
   server->on("/settings", HTTP_GET, [this] { handleSettingsPage(); });
   server->on("/api/settings", HTTP_GET, [this] { handleGetSettings(); });
   server->on("/api/settings", HTTP_POST, [this] { handlePostSettings(); });
+  server->on("/api/proxy",   HTTP_GET,  [this] { handleProxy(); });
 
   // Deck editor endpoints
   server->on("/deck-editor", HTTP_GET, [this] { handleDeckEditorPage(); });
@@ -1459,6 +1461,37 @@ void CrossPointWebServer::handleDeleteDeck() const {
 
   LOG_DBG("WEB", "Deleted deck: %s", path.c_str());
   server->send(200, "text/plain", "OK");
+}
+
+void CrossPointWebServer::handleProxy() const {
+  if (!server->hasArg("url")) {
+    server->send(400, "text/plain", "Missing url");
+    return;
+  }
+
+  const std::string url = server->arg("url").c_str();
+
+  if (ESP.getMaxAllocHeap() < 50000) {
+    server->send(503, "text/plain", "Insufficient heap for TLS");
+    return;
+  }
+
+  std::string content;
+  if (!HttpDownloader::fetchUrl(url, content)) {
+    server->send(502, "text/plain", "Fetch failed");
+    return;
+  }
+
+  // Reject HTML responses (e.g. login pages served instead of raw files)
+  if (content.size() > 5 && content.compare(0, 5, "<!DOC") == 0) {
+    server->send(502, "text/plain", "Got HTML instead of CSV — check the URL");
+    return;
+  }
+
+  server->setContentLength(content.size());
+  server->send(200, "text/plain", "");
+  server->sendContent(content.c_str(), content.size());
+  LOG_DBG("WEB", "Proxied %zu bytes from %s", content.size(), url.c_str());
 }
 
 // WebSocket callback trampoline
