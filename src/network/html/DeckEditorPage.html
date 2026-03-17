@@ -479,6 +479,50 @@
     .picker-btn-new:hover    { background: #219a52; }
     .picker-btn-import { background: #e67e22; }
     .picker-btn-import:hover { background: #ca6f1e; }
+    .picker-btn-url    { background: #2980b9; }
+    .picker-btn-url:hover    { background: #2471a3; }
+
+    /* ── URL import form ─────────────────────────────────────────── */
+    #url-import-form {
+      background: #f0f4f8;
+      border: 1px solid #d0d8e0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #url-import-form input[type=text] {
+      padding: 6px 10px;
+      border: 1px solid #bbb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      font-family: inherit;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #url-import-form .url-form-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    #url-import-form .url-form-row input { flex: 1; }
+    #url-import-status { font-size: 0.85em; color: #555; min-height: 1.2em; }
+
+    /* ── Per-deck sync button ────────────────────────────────────── */
+    .deck-sync-btn {
+      cursor: pointer;
+      font-size: 1em;
+      color: #27ae60;
+      padding: 2px 5px;
+      border-radius: 4px;
+      user-select: none;
+      display: inline-block;
+    }
+    .deck-sync-btn:hover { background: #eafaf1; }
+    .deck-sync-btn.syncing { animation: spin 0.8s linear infinite; pointer-events: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Hotkey hints ─────────────────────────────────────────────── */
     #hotkey-hints {
@@ -609,6 +653,17 @@
   <div style="margin:12px 0; display:flex; flex-wrap:wrap; gap:8px;">
     <button onclick="newDeck()" class="picker-btn picker-btn-new">+ New Deck</button>
     <button onclick="document.getElementById('import-input').click()" class="picker-btn picker-btn-import">&#8593; Import CSV/TSV</button>
+    <button onclick="toggleUrlImport()" class="picker-btn picker-btn-url">&#8645; Import from URL</button>
+  </div>
+  <div id="url-import-form" hidden>
+    <div class="url-form-row">
+      <input type="text" id="url-import-url" placeholder="https://… (CSV/TSV direct link)" />
+    </div>
+    <div class="url-form-row">
+      <input type="text" id="url-import-name" placeholder="Deck name (leave blank to use existing)" />
+      <button onclick="doImportFromUrl()" class="picker-btn picker-btn-url" style="white-space:nowrap">&#8595; Import</button>
+    </div>
+    <div id="url-import-status"></div>
   </div>
   <div id="deck-list"><span class="loader"></span> Loading&hellip;</div>
 </div>
@@ -1069,14 +1124,23 @@
           html+='<div class="deck-item" data-i="'+i+'">'+
             '<span class="deck-title">'+esc(decks[i].title)+'</span>'+
             '<span class="deck-actions">'+
+              (decks[i].source_url ? '<span class="deck-sync-btn" data-i="'+i+'" title="Re-sync from source URL">&#8635;</span>' : '')+
               '<span class="deck-edit-btn"   data-i="'+i+'" title="Rename">&#9998;</span>'+
               '<span class="deck-export-btn" data-i="'+i+'" title="Export/Download">&#8595;</span>'+
               '<span class="deck-del-btn"    data-i="'+i+'" title="Delete">&times;</span>'+
             '</span></div>';
         c.innerHTML=html;
+        c.querySelectorAll('.deck-sync-btn').forEach(function(btn){
+          var idx=parseInt(btn.dataset.i,10);
+          btn.addEventListener('click',function(e){
+            e.stopPropagation();
+            syncDeckFromSource(decks[idx].path, decks[idx].title, decks[idx].source_url, btn);
+          });
+        });
         c.querySelectorAll('.deck-item').forEach(function(el){
           var idx=parseInt(el.dataset.i,10);
           el.addEventListener('click',function(e){
+            if(e.target.classList.contains('deck-sync-btn'))   return;
             if(e.target.classList.contains('deck-edit-btn'))   return;
             if(e.target.classList.contains('deck-export-btn')) return;
             if(e.target.classList.contains('deck-del-btn'))    return;
@@ -1173,6 +1237,120 @@
   _delOverlay.addEventListener('click', function(e) {
     if (e.target === _delOverlay) { _delOverlay.hidden = true; _delCb = null; }
   });
+
+  // ── Import from URL ───────────────────────────────────────────────────────
+  function toggleUrlImport() {
+    var form = document.getElementById('url-import-form');
+    form.hidden = !form.hidden;
+    if (!form.hidden) document.getElementById('url-import-url').focus();
+  }
+
+  function _cardKey(front, back) {
+    function norm(s) { return s.trim().replace(/\s+/g,' ').toLowerCase(); }
+    return norm(front) + '\x00' + norm(back);
+  }
+
+  // Merge sourceRows into existingRows by front+back identity.
+  // New cards (no match) are appended. Existing cards keep their SM-2 data.
+  function _mergeRows(existingRows, sourceRows) {
+    var header = existingRows[0];
+    var byKey = {};
+    for (var i = 1; i < existingRows.length; i++) {
+      var r = existingRows[i];
+      if (r.length >= 2) byKey[_cardKey(r[0], r[1])] = true;
+    }
+    var merged = existingRows.slice();
+    for (var j = 1; j < sourceRows.length; j++) {
+      var sr = sourceRows[j];
+      if (sr.length < 2) continue;
+      if (!byKey[_cardKey(sr[0], sr[1])]) {
+        merged.push([sr[0], sr[1], '0', '2500', '0', '0']);
+      }
+    }
+    return merged;
+  }
+
+  function doImportFromUrl() {
+    var url  = document.getElementById('url-import-url').value.trim();
+    var name = document.getElementById('url-import-name').value.trim();
+    var status = document.getElementById('url-import-status');
+    if (!url) { status.textContent = 'Please enter a URL.'; return; }
+
+    status.textContent = 'Fetching\u2026';
+    fetch('/api/proxy?url=' + encodeURIComponent(url))
+      .then(function(r) {
+        if (!r.ok) return r.text().then(function(b) { throw new Error(b); });
+        return r.text();
+      })
+      .then(function(csv) {
+        var sourceRows = parseCSV(csv);
+        if (sourceRows.length < 2) throw new Error('No data rows found in file.');
+
+        // Determine target deck path
+        var deckName = name || sourceRows[0][0] || 'imported';
+        var path = name ? deckPath(name) : '/anki/' + deckName.replace(/[^a-zA-Z0-9 _-]/g,'_').trim() + '.csv';
+        if (!path) throw new Error('Invalid deck name.');
+
+        // Load existing deck (if any) and merge
+        return fetch('/api/deck?path=' + encodeURIComponent(path))
+          .then(function(r) { return r.ok ? r.text() : ''; })
+          .then(function(existing) {
+            var existingRows = existing ? parseCSV(existing) : [['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession']];
+            var merged = _mergeRows(existingRows, sourceRows);
+            var body = serializeCSV(merged[0], merged.slice(1), ',');
+            return fetch('/api/deck?path=' + encodeURIComponent(path), {
+              method: 'POST', headers: {'Content-Type': 'text/plain'}, body: body
+            });
+          })
+          .then(function(r) {
+            if (!r.ok) return r.text().then(function(b) { throw new Error(b); });
+            // Save source URL for future syncs
+            return fetch('/api/deck-source?path=' + encodeURIComponent(path), {
+              method: 'POST', headers: {'Content-Type': 'text/plain'}, body: url
+            });
+          })
+          .then(function() {
+            var added = sourceRows.length - 1;
+            status.textContent = 'Done — ' + added + ' source rows processed.';
+            document.getElementById('url-import-url').value = '';
+            document.getElementById('url-import-name').value = '';
+            loadDeckList();
+          });
+      })
+      .catch(function(e) { status.textContent = 'Error: ' + e.message; });
+  }
+
+  function syncDeckFromSource(deckPath, deckTitle, sourceUrl, btn) {
+    btn.classList.add('syncing');
+    fetch('/api/proxy?url=' + encodeURIComponent(sourceUrl))
+      .then(function(r) {
+        if (!r.ok) return r.text().then(function(b) { throw new Error(b); });
+        return r.text();
+      })
+      .then(function(csv) {
+        var sourceRows = parseCSV(csv);
+        if (sourceRows.length < 2) throw new Error('No data rows.');
+        return fetch('/api/deck?path=' + encodeURIComponent(deckPath))
+          .then(function(r) { return r.ok ? r.text() : ''; })
+          .then(function(existing) {
+            var existingRows = existing ? parseCSV(existing) : [['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession']];
+            var merged = _mergeRows(existingRows, sourceRows);
+            var delim = deckPath.endsWith('.tsv') ? '\t' : ',';
+            var body = serializeCSV(merged[0], merged.slice(1), delim);
+            return fetch('/api/deck?path=' + encodeURIComponent(deckPath), {
+              method: 'POST', headers: {'Content-Type': 'text/plain'}, body: body
+            });
+          });
+      })
+      .then(function() {
+        btn.classList.remove('syncing');
+        showBanner('picker-banner', esc(deckTitle) + ' synced.', false);
+      })
+      .catch(function(e) {
+        btn.classList.remove('syncing');
+        showBanner('picker-banner', 'Sync failed: ' + e.message, true);
+      });
+  }
 
   // ── Import (file picker) ──────────────────────────────────────────────────
   document.getElementById('import-input').addEventListener('change', function(e) {

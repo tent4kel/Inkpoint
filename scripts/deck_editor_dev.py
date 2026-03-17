@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import urllib.parse
+import urllib.request
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 HTML_FILE = os.path.join(os.path.dirname(__file__), "../src/network/html/DeckEditorPage.html")
@@ -17,6 +18,9 @@ MOCK_DECKS = [
     {"path": "/anki/Japanese.csv", "title": "Japanese"},
     {"path": "/anki/Capitals.csv", "title": "Capitals"},
 ]
+
+# In-memory source URL store — mirrors device sidecar .url files
+MOCK_SOURCES = {}  # deck path → source URL
 
 MOCK_CSVS = {
     "/anki/Spanish.csv": (
@@ -78,7 +82,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(body)
 
         elif path == "/api/decks":
-            self.send_json(MOCK_DECKS)
+            decks = [{**d, "source_url": MOCK_SOURCES.get(d["path"], "")} for d in MOCK_DECKS]
+            self.send_json(decks)
 
         elif path == "/api/deck":
             deck_path = qs.get("path", [None])[0]
@@ -86,6 +91,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_text("Deck not found", 404)
             else:
                 self.send_text(MOCK_CSVS[deck_path], content_type="text/plain")
+
+        elif path == "/api/deck-source":
+            deck_path = qs.get("path", [None])[0]
+            if not deck_path:
+                self.send_text("Missing path", 400)
+            else:
+                self.send_text(MOCK_SOURCES.get(deck_path, ""))
+
+        elif path == "/api/proxy":
+            url = qs.get("url", [None])[0]
+            if not url:
+                self.send_text("Missing url", 400)
+                return
+            try:
+                req = urllib.request.Request(url, headers={
+                    "User-Agent": "curl/7.88",
+                    "Accept": "text/csv, text/plain, application/octet-stream, */*",
+                })
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    ct = resp.headers.get("Content-Type", "")
+                    if "text/html" in ct:
+                        self.send_text("Got HTML instead of CSV — check the URL", 502)
+                        return
+                    body = resp.read().decode("utf-8", errors="replace")
+                self.send_text(body)
+            except Exception as ex:
+                self.send_text(f"Fetch failed: {ex}", 502)
 
         else:
             self.send_text("Not found", 404)
@@ -109,6 +141,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_text("OK")
             else:
                 self.send_text("Missing path", 400)
+
+        elif path == "/api/deck-source":
+            deck_path = qs.get("path", [None])[0]
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8").strip()
+            if not deck_path:
+                self.send_text("Missing path", 400)
+            else:
+                MOCK_SOURCES[deck_path] = body
+                print(f"  [SOURCE] {deck_path} → {body}")
+                self.send_text("OK")
 
         elif path == "/api/rename-deck":
             from_path = qs.get("from", [None])[0]
