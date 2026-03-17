@@ -30,6 +30,13 @@ class HttpDownloader {
   static bool fetchUrl(const std::string& url, Stream& stream);
 
   /**
+   * Fetch for proxy use: neutral user-agent, follows one redirect level with
+   * sequential (not concurrent) TLS connections to avoid heap OOM on devices
+   * where two simultaneous TLS contexts (~34KB each) exceed available contiguous RAM.
+   */
+  static bool fetchUrlProxy(const std::string& url, std::string& outContent);
+
+  /**
    * POST to a URL and get the response body.
    * @param url The URL to POST to
    * @param body URL-encoded POST body
