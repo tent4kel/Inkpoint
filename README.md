@@ -11,8 +11,6 @@ Xteink firmware. It aims to match or improve upon the standard EPUB reading expe
 > It adds Anki flashcard study, Instapaper integration, and experimental font customisation on top of the upstream
 > feature set. See [Releases](https://github.com/tent4kel/Inkpoint/releases) for pre-built firmware.
 
-![](./docs/images/cover.jpg)
-
 ---
 
 ## Fork Features
