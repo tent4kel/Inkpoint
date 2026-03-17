@@ -43,12 +43,15 @@ CardSchedule review(const CardSchedule& card, Grade grade, uint32_t currentSessi
     next.nextReviewSession = currentSession + next.interval;
   } else {
     // Good or Easy: advance repetitions.
-    if (card.repetitions < learningThreshold) {
-      // Learning phase: fixed small intervals regardless of EF.
-      // Again→0  Hard→1  Good→1  Easy→2
-      next.interval = (grade == Grade::Easy) ? 2 : 1;
+    if (card.repetitions < learningThreshold && grade != Grade::Easy) {
+      // Learning phase (Good only): fixed 1-session interval.
+      // Easy bypasses this and uses SM-2 formula directly (see below).
+      next.interval = 1;
     } else {
-      // SM-2 phase: EF-driven growth. Minimum 2 to ensure forward progress.
+      // SM-2 phase, or Easy at any repetition count.
+      // Easy uses EF-driven growth from the very first review; the first review
+      // seeds at interval=0 which truncates to 2 via the max — giving one soft
+      // check-in before the curve diverges from Good.
       next.interval = std::max(
           static_cast<uint32_t>(2),
           static_cast<uint32_t>(card.interval * next.easinessFactor / 1000));
