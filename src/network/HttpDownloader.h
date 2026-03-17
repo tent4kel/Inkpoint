@@ -30,6 +30,13 @@ class HttpDownloader {
   static bool fetchUrl(const std::string& url, Stream& stream);
 
   /**
+   * Fetch for proxy use: neutral user-agent, follows one redirect level with
+   * sequential (not concurrent) TLS connections to avoid heap OOM on devices
+   * where two simultaneous TLS contexts (~34KB each) exceed available contiguous RAM.
+   */
+  static bool fetchUrlProxy(const std::string& url, std::string& outContent);
+
+  /**
    * Download a file to the SD card.
    * @param url The URL to download
    * @param destPath The destination path on SD card

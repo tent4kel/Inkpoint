@@ -1211,7 +1211,7 @@ void CrossPointWebServer::handleProxy() const {
   }
 
   std::string content;
-  if (!HttpDownloader::fetchUrl(url, content)) {
+  if (!HttpDownloader::fetchUrlProxy(url, content)) {
     server->send(502, "text/plain", "Fetch failed");
     return;
   }

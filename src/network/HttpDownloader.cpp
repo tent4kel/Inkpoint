@@ -101,6 +101,57 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent) {
   return true;
 }
 
+// Fetch for proxy use: neutral user-agent, follows one redirect level by freeing
+// the first TLS client before allocating the second. Two concurrent TLS contexts
+// (~34KB each) would OOM on the constrained ESP32 heap.
+bool HttpDownloader::fetchUrlProxy(const std::string& url, std::string& outContent) {
+  static constexpr const char* PROXY_UA = "curl/7.88";
+  std::string target = url;
+
+  for (int hop = 0; hop < 2; ++hop) {
+    LOG_DBG("HTTP", "Proxy fetch (hop %d): %s", hop, target.c_str());
+
+    std::unique_ptr<NetworkClientSecure> client(new (std::nothrow) NetworkClientSecure());
+    if (!client) {
+      LOG_ERR("HTTP", "OOM for proxy TLS (hop %d)", hop);
+      return false;
+    }
+    client->setInsecure();
+
+    HTTPClient http;
+    http.begin(*client, target.c_str());
+    http.setTimeout(8000);
+    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    http.addHeader("User-Agent", PROXY_UA);
+    http.addHeader("Accept", "text/csv, text/plain, */*");
+
+    const int code = http.GET();
+
+    if (code == HTTP_CODE_OK) {
+      outContent = http.getString().c_str();
+      http.end();
+      LOG_DBG("HTTP", "Proxy fetch success (%zu bytes)", outContent.size());
+      return true;
+    }
+
+    if (code >= 301 && code <= 308) {
+      target = http.getLocation().c_str();
+      http.end();
+      // client goes out of scope → TLS freed before next hop's allocation
+      LOG_DBG("HTTP", "Proxy redirect → %s", target.c_str());
+      if (target.empty()) return false;
+      continue;
+    }
+
+    LOG_ERR("HTTP", "Proxy fetch failed: %d", code);
+    http.end();
+    return false;
+  }
+
+  LOG_ERR("HTTP", "Proxy: too many redirects");
+  return false;
+}
+
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
                                                              ProgressCallback progress) {
   // Use NetworkClientSecure for HTTPS, regular NetworkClient for HTTP
