@@ -104,12 +104,15 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent) {
 // Fetch for proxy use: neutral user-agent, follows one redirect level by freeing
 // the first TLS client before allocating the second. Two concurrent TLS contexts
 // (~34KB each) would OOM on the constrained ESP32 heap.
-bool HttpDownloader::fetchUrlProxy(const std::string& url, std::string& outContent) {
+bool HttpDownloader::fetchUrlProxy(const std::string& url, std::string& outContent,
+                                   std::string& outRedirectUrl) {
   static constexpr const char* PROXY_UA = "curl/7.88";
   std::string target = url;
+  std::string cookie;  // Set-Cookie from redirect, forwarded to CDN
+  outRedirectUrl.clear();
 
   for (int hop = 0; hop < 2; ++hop) {
-    LOG_DBG("HTTP", "Proxy fetch (hop %d): %s", hop, target.c_str());
+    LOG_DBG("HTTP", "Proxy fetch (hop %d) len=%zu", hop, target.size());
 
     std::unique_ptr<NetworkClientSecure> client(new (std::nothrow) NetworkClientSecure());
     if (!client) {
@@ -123,27 +126,45 @@ bool HttpDownloader::fetchUrlProxy(const std::string& url, std::string& outConte
     http.setTimeout(8000);
     http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
     http.addHeader("User-Agent", PROXY_UA);
-    http.addHeader("Accept", "text/csv, text/plain, */*");
+    http.addHeader("Accept", "*/*");
+    if (!cookie.empty()) {
+      http.addHeader("Cookie", cookie.c_str());
+    }
+
+    // Collect Set-Cookie so we can forward it on redirect
+    const char* collectHdrs[] = {"Set-Cookie"};
+    http.collectHeaders(collectHdrs, 1);
 
     const int code = http.GET();
 
     if (code == HTTP_CODE_OK) {
       outContent = http.getString().c_str();
       http.end();
+      outRedirectUrl.clear();  // success — no redirect fallback needed
       LOG_DBG("HTTP", "Proxy fetch success (%zu bytes)", outContent.size());
       return true;
     }
 
     if (code >= 301 && code <= 308) {
+      // Extract Set-Cookie (just name=value, strip attributes)
+      String sc = http.header("Set-Cookie");
+      if (sc.length() > 0) {
+        int semi = sc.indexOf(';');
+        cookie = (semi > 0 ? sc.substring(0, semi) : sc).c_str();
+        LOG_DBG("HTTP", "Proxy forwarding cookie (%d bytes)", (int)cookie.size());
+      }
       target = http.getLocation().c_str();
       http.end();
       // client goes out of scope → TLS freed before next hop's allocation
-      LOG_DBG("HTTP", "Proxy redirect → %s", target.c_str());
+      LOG_DBG("HTTP", "Proxy redirect target len=%zu", target.size());
       if (target.empty()) return false;
+      outRedirectUrl = target;  // expose CDN URL in case hop 1 fails
       continue;
     }
 
-    LOG_ERR("HTTP", "Proxy fetch failed: %d", code);
+    // Log error body for diagnosis (up to 128 bytes)
+    String errBody = http.getString();
+    LOG_ERR("HTTP", "Proxy fetch failed: %d body: %.128s", code, errBody.c_str());
     http.end();
     return false;
   }

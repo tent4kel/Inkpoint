@@ -106,4 +106,7 @@ class CrossPointWebServer {
   void handleSettingsPage() const;
   void handleGetSettings() const;
   void handlePostSettings();
+
+  // Deck source handler (GET/POST per-deck source URL)
+  void handleDeckSource() const;
 };

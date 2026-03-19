@@ -34,7 +34,10 @@ class HttpDownloader {
    * sequential (not concurrent) TLS connections to avoid heap OOM on devices
    * where two simultaneous TLS contexts (~34KB each) exceed available contiguous RAM.
    */
-  static bool fetchUrlProxy(const std::string& url, std::string& outContent);
+  // outRedirectUrl: if set on return, hop 0 got a redirect but hop 1 failed —
+  // caller may return this URL to the browser for direct fetching (CORS required).
+  static bool fetchUrlProxy(const std::string& url, std::string& outContent,
+                             std::string& outRedirectUrl);
 
   /**
    * Download a file to the SD card.

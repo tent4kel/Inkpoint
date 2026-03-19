@@ -41,6 +41,56 @@ String wsLastCompleteName;
 size_t wsLastCompleteSize = 0;
 unsigned long wsLastCompleteAt = 0;
 
+// Convert "/anki/Deck.csv" → "/.ankix/Deck.json"
+String deckJsonPath(const String& csvPath) {
+  const int lastSlash = csvPath.lastIndexOf('/');
+  String filename = (lastSlash >= 0) ? csvPath.substring(lastSlash + 1) : csvPath;
+  if (filename.length() > 4) {
+    String lower = filename;
+    lower.toLowerCase();
+    if (lower.endsWith(".csv") || lower.endsWith(".tsv")) {
+      filename = filename.substring(0, filename.length() - 4);
+    }
+  }
+  return String("/.ankix/") + filename + ".json";
+}
+
+void clearEpubCacheIfNeeded(const String& filePath);  // defined below
+
+// Recursively delete a file or directory tree. Returns false on first failure.
+bool deleteRecursive(const char* path) {
+  FsFile entry = Storage.open(path);
+  if (!entry) return false;
+
+  if (!entry.isDirectory()) {
+    entry.close();
+    clearEpubCacheIfNeeded(String(path));
+    return Storage.remove(path);
+  }
+
+  // Delete all children first
+  char nameBuf[256];
+  FsFile child = entry.openNextFile();
+  while (child) {
+    child.getName(nameBuf, sizeof(nameBuf));
+    String childPath = String(path);
+    if (!childPath.endsWith("/")) childPath += "/";
+    childPath += nameBuf;
+    const bool isDir = child.isDirectory();
+    child.close();
+    esp_task_wdt_reset();
+    if (isDir) {
+      if (!deleteRecursive(childPath.c_str())) { entry.close(); return false; }
+    } else {
+      clearEpubCacheIfNeeded(childPath);
+      if (!Storage.remove(childPath.c_str())) { entry.close(); return false; }
+    }
+    child = entry.openNextFile();
+  }
+  entry.close();
+  return Storage.rmdir(path);
+}
+
 // Helper function to clear epub cache after upload
 void clearEpubCacheIfNeeded(const String& filePath) {
   // Only clear cache for .epub files
@@ -157,6 +207,10 @@ void CrossPointWebServer::begin() {
   server->on("/api/settings", HTTP_GET, [this] { handleGetSettings(); });
   server->on("/api/settings", HTTP_POST, [this] { handlePostSettings(); });
   server->on("/api/proxy",   HTTP_GET,  [this] { handleProxy(); });
+
+  server->on("/api/deck-source",  HTTP_GET,  [this] { handleDeckSource(); });
+  server->on("/api/deck-source",  HTTP_POST, [this] { handleDeckSource(); });
+
 
   server->onNotFound([this] { handleNotFound(); });
   LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
@@ -968,30 +1022,6 @@ void CrossPointWebServer::handleDelete() const {
       itemPath = "/" + itemPath;
     }
 
-    // Security check: prevent deletion of protected items
-    const String itemName = itemPath.substring(itemPath.lastIndexOf('/') + 1);
-
-    // Hidden/system files are protected
-    if (itemName.startsWith(".")) {
-      failedItems += itemPath + " (hidden/system file); ";
-      allSuccess = false;
-      continue;
-    }
-
-    // Check against explicitly protected items
-    bool isProtected = false;
-    for (size_t i = 0; i < HIDDEN_ITEMS_COUNT; i++) {
-      if (itemName.equals(HIDDEN_ITEMS[i])) {
-        isProtected = true;
-        break;
-      }
-    }
-    if (isProtected) {
-      failedItems += itemPath + " (protected file); ";
-      allSuccess = false;
-      continue;
-    }
-
     // Check if item exists
     if (!Storage.exists(itemPath.c_str())) {
       failedItems += itemPath + " (not found); ";
@@ -999,29 +1029,7 @@ void CrossPointWebServer::handleDelete() const {
       continue;
     }
 
-    // Decide whether it's a directory or file by opening it
-    bool success = false;
-    FsFile f = Storage.open(itemPath.c_str());
-    if (f && f.isDirectory()) {
-      // For folders, ensure empty before removing
-      FsFile entry = f.openNextFile();
-      if (entry) {
-        entry.close();
-        f.close();
-        failedItems += itemPath + " (folder not empty); ";
-        allSuccess = false;
-        continue;
-      }
-      f.close();
-      success = Storage.rmdir(itemPath.c_str());
-    } else {
-      // It's a file (or couldn't open as dir) — remove file
-      if (f) f.close();
-      success = Storage.remove(itemPath.c_str());
-      clearEpubCacheIfNeeded(itemPath);
-    }
-
-    if (!success) {
+    if (!deleteRecursive(itemPath.c_str())) {
       failedItems += itemPath + " (deletion failed); ";
       allSuccess = false;
     }
@@ -1197,6 +1205,88 @@ void CrossPointWebServer::handlePostSettings() {
   server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");
 }
 
+void CrossPointWebServer::handleDeckSource() const {
+  if (!server->hasArg("path")) {
+    server->send(400, "text/plain", "Missing path");
+    return;
+  }
+
+  String path = server->arg("path");
+  if (!path.startsWith("/")) path = "/" + path;
+
+  String lower = path;
+  lower.toLowerCase();
+  if (!lower.endsWith(".csv") && !lower.endsWith(".tsv")) {
+    server->send(400, "text/plain", "Only .csv and .tsv files are supported");
+    return;
+  }
+  if (!lower.startsWith("/anki/")) {
+    server->send(400, "text/plain", "Path must be inside /anki/");
+    return;
+  }
+
+  const String jsonPath = deckJsonPath(path);
+
+  if (server->method() == HTTP_GET) {
+    String sourceUrl = "";
+    if (Storage.exists(jsonPath.c_str())) {
+      FsFile f = Storage.open(jsonPath.c_str());
+      if (f) {
+        JsonDocument jDoc;
+        deserializeJson(jDoc, f);
+        f.close();
+        sourceUrl = jDoc["source_url"] | "";
+      }
+    }
+    JsonDocument out;
+    out["source_url"] = sourceUrl;
+    String body;
+    serializeJson(out, body);
+    server->send(200, "application/json", body);
+    return;
+  }
+
+  // POST — persist source_url
+  if (!server->hasArg("plain")) {
+    server->send(400, "text/plain", "Missing body");
+    return;
+  }
+
+  JsonDocument req;
+  const DeserializationError err = deserializeJson(req, server->arg("plain"));
+  if (err || req["source_url"].isNull()) {
+    server->send(400, "text/plain", "Invalid JSON body");
+    return;
+  }
+
+  // Ensure /.ankix/ directory exists
+  if (!Storage.exists("/.ankix")) {
+    Storage.mkdir("/.ankix");
+  }
+
+  // Read existing JSON to preserve future fields, then update source_url
+  JsonDocument jDoc;
+  if (Storage.exists(jsonPath.c_str())) {
+    FsFile rf = Storage.open(jsonPath.c_str());
+    if (rf) {
+      deserializeJson(jDoc, rf);
+      rf.close();
+    }
+  }
+  jDoc["source_url"] = req["source_url"].as<const char*>();
+
+  FsFile wf;
+  if (!Storage.openFileForWrite("WEB", jsonPath.c_str(), wf)) {
+    server->send(500, "text/plain", "Write failed");
+    return;
+  }
+  serializeJson(jDoc, wf);
+  wf.close();
+
+  LOG_DBG("WEB", "Saved deck source for %s", path.c_str());
+  server->send(200, "text/plain", "OK");
+}
+
 void CrossPointWebServer::handleProxy() const {
   if (!server->hasArg("url")) {
     server->send(400, "text/plain", "Missing url");
@@ -1205,14 +1295,23 @@ void CrossPointWebServer::handleProxy() const {
 
   const std::string url = server->arg("url").c_str();
 
-  if (ESP.getMaxAllocHeap() < 50000) {
+  if (ESP.getMaxAllocHeap() < 45000) {
     server->send(503, "text/plain", "Insufficient heap for TLS");
     return;
   }
 
   std::string content;
-  if (!HttpDownloader::fetchUrlProxy(url, content)) {
-    server->send(502, "text/plain", "Fetch failed");
+  std::string redirectUrl;
+  if (!HttpDownloader::fetchUrlProxy(url, content, redirectUrl)) {
+    if (!redirectUrl.empty()) {
+      // Device can't fetch CDN directly — return signed URL for browser to fetch.
+      // Dropbox CDN sends Access-Control-Allow-Origin: * so the browser can do it.
+      server->sendHeader("Access-Control-Allow-Origin", "*");
+      server->sendHeader("Location", redirectUrl.c_str());
+      server->send(302, "text/plain", "");
+    } else {
+      server->send(502, "text/plain", "Fetch failed");
+    }
     return;
   }
 
