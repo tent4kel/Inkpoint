@@ -1,5 +1,6 @@
 #include "AnkiActivity.h"
 
+#include <ArduinoJson.h>
 #include <GfxRenderer.h>
 #include <sstream>
 #include <HalStorage.h>
@@ -22,7 +23,18 @@ constexpr uint8_t ANKI_SETTINGS_VERSION = 2;
 constexpr uint8_t DECK_SETTINGS_VERSION = 1;
 constexpr unsigned long LONG_PRESS_MS = 800;
 
-// Convert "/anki/Deck.csv" → "/.ankix/Deck.settings"
+// Convert "/anki/Deck.csv" → "/.ankix/Deck.json"
+std::string deckJsonPath(const std::string& csvPath) {
+  size_t lastSlash = csvPath.find_last_of('/');
+  std::string filename = (lastSlash != std::string::npos) ? csvPath.substr(lastSlash + 1) : csvPath;
+  if (filename.size() > 4 && (filename.substr(filename.size() - 4) == ".csv" ||
+                               filename.substr(filename.size() - 4) == ".tsv")) {
+    filename = filename.substr(0, filename.size() - 4);
+  }
+  return "/.ankix/" + filename + ".json";
+}
+
+// Convert "/anki/Deck.csv" → "/.ankix/Deck.settings" (legacy binary format)
 std::string deckSettingsPath(const std::string& csvPath) {
   size_t lastSlash = csvPath.find_last_of('/');
   std::string filename = (lastSlash != std::string::npos) ? csvPath.substr(lastSlash + 1) : csvPath;
@@ -70,20 +82,32 @@ void AnkiActivity::loadAnkiSettings() {
     }
   }
 
-  // Per-deck settings: font size + swap (overrides global if file exists)
+  // Per-deck settings: font size + swap (JSON format; falls back to legacy binary on first run)
   {
-    std::string path = deckSettingsPath(csvPath);
+    std::string jsonPath = deckJsonPath(csvPath);
     FsFile f;
-    if (Storage.openFileForRead("ANK", path.c_str(), f)) {
-      uint8_t version;
-      serialization::readPod(f, version);
-      if (version == DECK_SETTINGS_VERSION) {
-        serialization::readPod(f, ankiFontSize);
-        uint8_t swap;
-        serialization::readPod(f, swap);
-        ankiSwapFrontBack = swap != 0;
-      }
+    if (Storage.openFileForRead("ANK", jsonPath.c_str(), f)) {
+      JsonDocument doc;
+      const DeserializationError err = deserializeJson(doc, f);
       f.close();
+      if (!err) {
+        if (!doc["font_size"].isNull()) ankiFontSize = doc["font_size"].as<uint8_t>();
+        if (!doc["swap"].isNull()) ankiSwapFrontBack = doc["swap"].as<int>() != 0;
+      }
+    } else {
+      // Migrate from legacy binary .settings file
+      std::string binPath = deckSettingsPath(csvPath);
+      if (Storage.openFileForRead("ANK", binPath.c_str(), f)) {
+        uint8_t version;
+        serialization::readPod(f, version);
+        if (version == DECK_SETTINGS_VERSION) {
+          serialization::readPod(f, ankiFontSize);
+          uint8_t swap;
+          serialization::readPod(f, swap);
+          ankiSwapFrontBack = swap != 0;
+        }
+        f.close();
+      }
     }
   }
 
@@ -105,16 +129,21 @@ void AnkiActivity::saveAnkiSettings() {
     }
   }
 
-  // Per-deck settings: font size + swap
+  // Per-deck settings: font size + swap (JSON; read-modify-write to preserve source_url)
   {
-    std::string path = deckSettingsPath(csvPath);
-    FsFile f;
-    if (Storage.openFileForWrite("ANK", path.c_str(), f)) {
-      serialization::writePod(f, DECK_SETTINGS_VERSION);
-      serialization::writePod(f, ankiFontSize);
-      uint8_t swap = ankiSwapFrontBack ? 1 : 0;
-      serialization::writePod(f, swap);
-      f.close();
+    std::string jsonPath = deckJsonPath(csvPath);
+    JsonDocument doc;
+    FsFile rf;
+    if (Storage.openFileForRead("ANK", jsonPath.c_str(), rf)) {
+      deserializeJson(doc, rf);
+      rf.close();
+    }
+    doc["font_size"] = ankiFontSize;
+    doc["swap"] = ankiSwapFrontBack ? 1 : 0;
+    FsFile wf;
+    if (Storage.openFileForWrite("ANK", jsonPath.c_str(), wf)) {
+      serializeJson(doc, wf);
+      wf.close();
     }
   }
 }
