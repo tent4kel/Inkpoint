@@ -236,11 +236,11 @@ void HomeActivity::render(RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   // Build menu items dynamically
-  int insertPos = 2;
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
                                         tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings};
 
+  int insertPos = 2;
   if (hasOpdsUrl) {
     menuItems.insert(menuItems.begin() + insertPos, tr(STR_OPDS_BROWSER));
     menuIcons.insert(menuIcons.begin() + insertPos, Library);

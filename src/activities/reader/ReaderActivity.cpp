@@ -29,11 +29,11 @@ std::string ReaderActivity::extractFolderPath(const std::string& filePath) {
 bool ReaderActivity::isXtcFile(const std::string& path) { return FsHelpers::hasXtcExtension(path); }
 
 bool ReaderActivity::isTxtFile(const std::string& path) {
-  return FsHelpers::checkFileExtension(path, ".txt");
+  return FsHelpers::hasTxtExtension(path);
 }
 
 bool ReaderActivity::isMdFile(const std::string& path) {
-  return FsHelpers::checkFileExtension(path, ".md") || FsHelpers::checkFileExtension(path, ".markdown");
+  return FsHelpers::hasMarkdownExtension(path);
 }
 
 bool ReaderActivity::isHtmlFile(const std::string& path) {

@@ -566,7 +566,8 @@
     /* ── Explicit hidden overrides (prevent display:flex/block winning) ─ */
     #cards-container[hidden],
     #list-empty[hidden],
-    #no-results[hidden]     { display: none; }
+    #no-results[hidden],
+    #url-import-form[hidden] { display: none; }
 
     /* ── Bottom fade overlay ──────────────────────────────────────── */
     #bottom-fade {
@@ -1252,22 +1253,21 @@
 
   // Merge sourceRows into existingRows by front+back identity.
   // New cards (no match) are appended. Existing cards keep their SM-2 data.
-  function _mergeRows(existingRows, sourceRows) {
-    var header = existingRows[0];
+  // Both arguments are {headers, rows} objects (from parseCSV).
+  // Returns a new {headers, rows} with new-only source cards appended.
+  function _mergeRows(existing, source) {
     var byKey = {};
-    for (var i = 1; i < existingRows.length; i++) {
-      var r = existingRows[i];
+    existing.rows.forEach(function(r) {
       if (r.length >= 2) byKey[_cardKey(r[0], r[1])] = true;
-    }
-    var merged = existingRows.slice();
-    for (var j = 1; j < sourceRows.length; j++) {
-      var sr = sourceRows[j];
-      if (sr.length < 2) continue;
+    });
+    var newRows = existing.rows.slice();
+    source.rows.forEach(function(sr) {
+      if (sr.length < 2) return;
       if (!byKey[_cardKey(sr[0], sr[1])]) {
-        merged.push([sr[0], sr[1], '0', '2500', '0', '0']);
+        newRows.push([sr[0], sr[1], '0', '2500', '0', '0']);
       }
-    }
-    return merged;
+    });
+    return {headers: existing.headers, rows: newRows};
   }
 
   function doImportFromUrl() {
@@ -1283,21 +1283,25 @@
         return r.text();
       })
       .then(function(csv) {
-        var sourceRows = parseCSV(csv);
-        if (sourceRows.length < 2) throw new Error('No data rows found in file.');
+        var sourceParsed = parseCSV(csv);
+        if (sourceParsed.rows.length < 1) throw new Error('No data rows found in file.');
 
         // Determine target deck path
-        var deckName = name || sourceRows[0][0] || 'imported';
+        var deckName = name || sourceParsed.headers[0] || 'imported';
         var path = name ? deckPath(name) : '/anki/' + deckName.replace(/[^a-zA-Z0-9 _-]/g,'_').trim() + '.csv';
         if (!path) throw new Error('Invalid deck name.');
+        var addedCount = 0;
 
         // Load existing deck (if any) and merge
         return fetch('/api/deck?path=' + encodeURIComponent(path))
           .then(function(r) { return r.ok ? r.text() : ''; })
           .then(function(existing) {
-            var existingRows = existing ? parseCSV(existing) : [['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession']];
-            var merged = _mergeRows(existingRows, sourceRows);
-            var body = serializeCSV(merged[0], merged.slice(1), ',');
+            var existingParsed = existing ? parseCSV(existing) : {
+              headers: ['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'], rows: []
+            };
+            var merged = _mergeRows(existingParsed, sourceParsed);
+            addedCount = merged.rows.length - existingParsed.rows.length;
+            var body = serializeCSV(merged.headers, merged.rows, ',');
             return fetch('/api/deck?path=' + encodeURIComponent(path), {
               method: 'POST', headers: {'Content-Type': 'text/plain'}, body: body
             });
@@ -1306,12 +1310,12 @@
             if (!r.ok) return r.text().then(function(b) { throw new Error(b); });
             // Save source URL for future syncs
             return fetch('/api/deck-source?path=' + encodeURIComponent(path), {
-              method: 'POST', headers: {'Content-Type': 'text/plain'}, body: url
+              method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({source_url: url})
             });
           })
           .then(function() {
-            var added = sourceRows.length - 1;
-            status.textContent = 'Done — ' + added + ' source rows processed.';
+            status.textContent = 'Done — ' + addedCount + ' new card' + (addedCount === 1 ? '' : 's') + ' added.';
             document.getElementById('url-import-url').value = '';
             document.getElementById('url-import-name').value = '';
             loadDeckList();
@@ -1328,15 +1332,17 @@
         return r.text();
       })
       .then(function(csv) {
-        var sourceRows = parseCSV(csv);
-        if (sourceRows.length < 2) throw new Error('No data rows.');
+        var sourceParsed = parseCSV(csv);
+        if (sourceParsed.rows.length < 1) throw new Error('No data rows.');
         return fetch('/api/deck?path=' + encodeURIComponent(deckPath))
           .then(function(r) { return r.ok ? r.text() : ''; })
           .then(function(existing) {
-            var existingRows = existing ? parseCSV(existing) : [['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession']];
-            var merged = _mergeRows(existingRows, sourceRows);
+            var existingParsed = existing ? parseCSV(existing) : {
+              headers: ['Front','Back','Repetitions','EasinessFactor','Interval','NextReviewSession'], rows: []
+            };
+            var merged = _mergeRows(existingParsed, sourceParsed);
             var delim = deckPath.endsWith('.tsv') ? '\t' : ',';
-            var body = serializeCSV(merged[0], merged.slice(1), delim);
+            var body = serializeCSV(merged.headers, merged.rows, delim);
             return fetch('/api/deck?path=' + encodeURIComponent(deckPath), {
               method: 'POST', headers: {'Content-Type': 'text/plain'}, body: body
             });

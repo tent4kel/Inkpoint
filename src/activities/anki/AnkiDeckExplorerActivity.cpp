@@ -32,8 +32,7 @@ void AnkiDeckExplorerActivity::onEnter() {
   scanning = false;
   statusMessage.clear();
 
-  loadDeckIndex();
-  refreshDueCounts();
+  scanDecks();  // Always scan on entry — picks up web editor changes and due date updates
 
   updateRequired = true;
   xTaskCreate(&AnkiDeckExplorerActivity::taskTrampoline, "DeckExplorer", 4096, this, 1, &displayTaskHandle);

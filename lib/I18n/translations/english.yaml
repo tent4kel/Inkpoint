@@ -378,6 +378,7 @@ STR_FETCHING: "Fetching Bookmarks"
 STR_SYNCED: "Synced"
 STR_CACHED_BOOKMARKS: " cached bookmarks"
 STR_SYNCED_BOOKMARKS: " synced bookmarks"
+
 STR_NO_ARTICLES: "No articles"
 STR_NO_CREDENTIALS: "No credentials"
 STR_FETCH_FAILED: "Fetch failed"
