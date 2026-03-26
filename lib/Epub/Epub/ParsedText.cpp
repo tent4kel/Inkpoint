@@ -500,8 +500,9 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
                                ? spareSpace / static_cast<int>(actualGapCount)
                                : 0;
 
-  // Calculate initial x position
-  auto xpos = static_cast<uint16_t>(lineStartX);
+  // Calculate initial x position (lineStartX handles both text-indent for first lines
+  // and hanging indent for subsequent lines, e.g. list items).
+  auto xpos = static_cast<int16_t>(lineStartX);
   if (blockStyle.alignment == CssTextAlign::Right) {
     xpos = effectivePageWidth - lineWordWidthSum - totalNaturalGaps;
   } else if (blockStyle.alignment == CssTextAlign::Center) {

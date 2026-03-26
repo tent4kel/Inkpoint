@@ -5,6 +5,7 @@
 #include <freertos/task.h>
 
 #include <cassert>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -82,11 +83,15 @@ class ActivityManager {
   void goToFileBrowser(std::string path = {});
   void goToRecentBooks();
   void goToBrowser();
+  void goToInstapaper();
+  void goToInstapaperArticle(std::string path,
+                             std::function<void()> onDelete = nullptr,
+                             std::function<void()> onAdvance = nullptr);
   void goToReader(std::string path);
   void goToAnkiExplorer();
   void goToAnki(std::string csvPath);
   void goToSleep();
-  void goToBoot();
+  void goToBoot(const char* subtitle = nullptr);
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   void goHome();
 

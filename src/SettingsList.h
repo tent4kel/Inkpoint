@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
+#include "InstapaperCredentialStore.h"
 #include "KOReaderCredentialStore.h"
 #include "activities/settings/SettingsActivity.h"
 

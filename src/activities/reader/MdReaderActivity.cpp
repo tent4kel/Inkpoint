@@ -443,7 +443,10 @@ void MdReaderActivity::renderContents(std::unique_ptr<Page> page, const int orie
 void MdReaderActivity::renderStatusBar(const int /*orientedMarginRight*/, const int /*orientedMarginBottom*/,
                                        const int /*orientedMarginLeft*/) {
   const float progress = totalPages > 0 ? (currentPage + 1) * 100.0f / totalPages : 0;
-  const std::string title = md->getTitle();
+  std::string title;
+  if (SETTINGS.statusBarTitle != CrossPointSettings::STATUS_BAR_TITLE::HIDE_TITLE) {
+    title = md->getTitle();
+  }
   GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title);
 }
 
